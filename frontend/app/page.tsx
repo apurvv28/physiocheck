@@ -3,7 +3,7 @@
 import { motion } from 'framer-motion'
 import { Activity, Shield, Users, Video, ArrowRight, Heart } from 'lucide-react'
 import Link from 'next/link'
-import { HeroAnimation } from '@/components/animations/HeroAnimation'
+import { PhysioAnimation } from '@/components/animations/HeroAnimation'
 import { Card } from '@/components/cards/Card'
 
 export default function HomePage() {
@@ -60,7 +60,7 @@ export default function HomePage() {
               
               <div className="flex flex-wrap gap-4">
                 <Link
-                  href="/auth/register"
+                  href="/register"
                   className="inline-flex items-center px-8 py-3 rounded-lg bg-teal-600 text-white font-semibold hover:bg-teal-700 transition-colors duration-300"
                 >
                   Get Started Free
@@ -80,7 +80,7 @@ export default function HomePage() {
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.7 }}
             >
-              <HeroAnimation />
+              <PhysioAnimation />
             </motion.div>
           </div>
         </div>

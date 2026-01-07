@@ -35,12 +35,20 @@ export default function PatientsPage() {
       const response = await api.get(apiEndpoints.doctor.patients.list)
       const data = response.data
       
+      console.log("Raw patients data:", data) // DEBUG log
+
+      if (!Array.isArray(data)) {
+        console.error("Patients data is not an array:", data)
+        setPatients([])
+        return
+      }
+      
       // Map backend data to frontend Patient interface
       const mappedPatients: Patient[] = data.map((p: any) => ({
         id: p.id,
         name: p.full_name,
         email: p.email || '',
-        phone: p.user_id ? 'N/A' : '', // Phone not usually in basic user record
+        phone: p.phone || 'N/A',
         lastSession: 'No sessions yet', // Placeholder as list endpoint doesn't return this
         compliance: 0, // Placeholder
         status: 'active', // Default status
@@ -49,9 +57,11 @@ export default function PatientsPage() {
       }))
       
       setPatients(mappedPatients)
-    } catch (error) {
+    } catch (error: any) {
        // eslint-disable-next-line no-console
       console.error('Error fetching patients:', error)
+      console.error('Error details:', error.response?.data)
+      // Show alert for debugging if needed, but console is better for dev
     } finally {
       setLoading(false)
     }

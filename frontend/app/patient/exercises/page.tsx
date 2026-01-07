@@ -39,24 +39,26 @@ export default function PatientExercisesPage() {
 
   const fetchExercises = async () => {
     try {
-      const response = await api.get(apiEndpoints.patient.exercises.list)
+      const response = await api.get('/patient/my_exercises')
       const data = response.data
       
+      console.log('Patient exercises data:', data)
+
       const mappedExercises: PatientExercise[] = data.map((ex: any) => ({
         id: ex.id,
-        name: ex.exercise_name,
-        description: ex.exercise_description,
-        difficulty: 'beginner', // Placeholder
-        duration: 15, // Placeholder
-        bodyPart: [], // Placeholder
-        equipment: [], // Placeholder
-        assignedDate: ex.start_date,
-        dueDate: ex.end_date,
-        completed: false, // Placeholder
-        progress: 0, // Placeholder
-        sets: ex.sets,
-        reps: ex.reps,
-        frequency: ex.frequency
+        name: ex.exercises?.name || 'Unknown Exercise',
+        description: ex.exercises?.description || '',
+        difficulty: ex.exercises?.difficulty || 'beginner',
+        duration: Math.round((ex.exercises?.default_duration_seconds || 900) / 60),
+        bodyPart: ex.exercises?.body_part || [],
+        equipment: ex.exercises?.equipment || [],
+        assignedDate: ex.assigned_at || ex.created_at, // assigned_at is the correct field
+        dueDate: ex.dueDate, // Might not exist
+        completed: false, // You might want to check session history to see if completed today
+        progress: 0,
+        sets: ex.sets || 0,
+        reps: ex.reps || 0,
+        frequency: ex.frequency || 'daily'
       }))
       
       setExercises(mappedExercises)

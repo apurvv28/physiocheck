@@ -92,7 +92,21 @@ export default function PatientProfilePage() {
 
       setPatient(patientRes.data);
       setStats(statsRes.data);
-      setExercises(exercisesRes.data);
+      
+      // Map exercises to flattened structure using ex.exercises.*
+      const mappedExercises = (exercisesRes.data || []).map((ex: any) => ({
+        id: ex.id,
+        name: ex.exercises?.name || "Unknown Exercise",
+        difficulty: ex.exercises?.difficulty || "beginner", // Use exercise difficulty or fallback
+        sets: ex.sets || 0,
+        reps: ex.reps || 0,
+        frequency: ex.frequency || "daily",
+        progress: 0, // Placeholder
+        lastCompleted: undefined, // Placeholder
+        dueDate: undefined // Placeholder
+      }));
+      
+      setExercises(mappedExercises);
     } catch (error) {
       // console.error("Error fetching patient data:", error);
     } finally {

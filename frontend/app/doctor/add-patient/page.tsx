@@ -154,11 +154,17 @@ export default function AddPatientPage() {
       // Filter out empty array items
       const submitData = {
         email: formData.email,
-        password: generatePassword(), // Add generated password
         full_name: formData.name,
-        age: formData.dateOfBirth ? new Date().getFullYear() - new Date(formData.dateOfBirth).getFullYear() : 0,
-        gender: "other", // Placeholder as form doesn't have gender
-        diagnosis: formData.conditions.filter(item => item.trim()).join(", "),
+        phone: formData.phone,
+        date_of_birth: formData.dateOfBirth || null,
+        age: formData.dateOfBirth ? new Date().getFullYear() - new Date(formData.dateOfBirth).getFullYear() : null,
+        conditions: formData.conditions.filter(item => item.trim()),
+        allergies: formData.allergies.filter(item => item.trim()),
+        medications: formData.medications.filter(item => item.trim()),
+        emergency_contact_name: formData.emergencyContact || null,
+        emergency_contact_phone: formData.emergencyPhone || null,
+        notes: formData.notes || null,
+        sendCredentials: formData.sendCredentials
       }
       
       await api.post(apiEndpoints.doctor.patients.create, submitData)

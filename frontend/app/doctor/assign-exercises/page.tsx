@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
+import { api, apiEndpoints } from '@/lib/api'
 import { motion } from 'framer-motion'
 import { Search, Filter, Target, Clock, Users, Plus, Calendar, Check } from 'lucide-react'
 import { Card } from '@/components/cards/Card'
@@ -29,51 +30,49 @@ export default function AssignExercisesPage() {
   const [selectedExercise, setSelectedExercise] = useState<string | null>(null)
   const [showAssignModal, setShowAssignModal] = useState(false)
 
-  const exercises: Exercise[] = [
-    {
-      id: '1',
-      name: 'Shoulder Range of Motion',
-      description: 'Improve shoulder mobility and reduce stiffness',
-      difficulty: 'beginner',
-      duration: 10,
-      bodyPart: ['shoulder', 'upper back'],
-      equipment: ['none'],
-    },
-    {
-      id: '2',
-      name: 'Knee Rehabilitation Squats',
-      description: 'Strengthen quadriceps and improve knee stability',
-      difficulty: 'intermediate',
-      duration: 15,
-      bodyPart: ['knee', 'thigh'],
-      equipment: ['chair'],
-    },
-    {
-      id: '3',
-      name: 'Spinal Mobility Flow',
-      description: 'Enhance spinal flexibility and core strength',
-      difficulty: 'advanced',
-      duration: 20,
-      bodyPart: ['back', 'core'],
-      equipment: ['mat'],
-    },
-    {
-      id: '4',
-      name: 'Ankle Strengthening Series',
-      description: 'Build ankle stability and prevent injuries',
-      difficulty: 'beginner',
-      duration: 8,
-      bodyPart: ['ankle', 'foot'],
-      equipment: ['resistance band'],
-    },
-  ]
+  /* REMOVE STATIC DATA */
+  const [exercises, setExercises] = useState<Exercise[]>([])
+  const [patients, setPatients] = useState<Patient[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const patients: Patient[] = [
-    { id: '1', name: 'John Smith' },
-    { id: '2', name: 'Sarah Johnson' },
-    { id: '3', name: 'Michael Chen' },
-    { id: '4', name: 'Emily Wilson' },
-  ]
+  useEffect(() => {
+    fetchData()
+  }, [])
+
+  const fetchData = async () => {
+    try {
+      setLoading(true)
+      const [exercisesRes, patientsRes] = await Promise.all([
+        api.get('/exercises'),
+        api.get(apiEndpoints.doctor.patients.list)
+      ])
+      
+      // Map API data to frontend interfaces
+      // Backend exercises: name, description, difficulty, body_part (snake_case)
+      const mappedExercises = exercisesRes.data.map((ex: any) => ({
+        id: ex.id,
+        name: ex.name,
+        description: ex.description || '',
+        difficulty: ex.difficulty || 'beginner',
+        duration: Math.round((ex.default_duration_seconds || 600) / 60), // Convert seconds to minutes
+        bodyPart: ex.body_part || [],
+        equipment: ex.equipment || []
+      }))
+
+      const mappedPatients = patientsRes.data.map((p: any) => ({
+        id: p.id, // Patient ID
+        name: p.full_name
+      }))
+
+      setExercises(mappedExercises)
+      setPatients(mappedPatients)
+
+    } catch (error) {
+      console.error("Failed to fetch data:", error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredExercises = exercises.filter(exercise => {
     const matchesSearch = exercise.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -86,15 +85,45 @@ export default function AssignExercisesPage() {
 
   const bodyParts = Array.from(new Set(exercises.flatMap(ex => ex.bodyPart)))
 
-  const handleAssignExercise = () => {
+  const handleAssignExercise = async () => {
     if (selectedExercise && selectedPatients.length > 0) {
-      // Here you would make an API call to assign the exercise
-      // console.log(`Assigning exercise ${selectedExercise} to patients:`, selectedPatients)
-      setShowAssignModal(false)
-      setSelectedExercise(null)
-      setSelectedPatients([])
+        try {
+            // Get values from inputs (using refs or state would be cleaner, but for now document.getElementById or just simple state binding in the render if added)
+            // Ideally we need state for these inputs. Let's assume standard defaults for now or add state.
+            // Since I can't see the inputs state variables, I will add them in a separate chunk or just use defaults here.
+            
+            // Wait, the previous code didn't have state for sets/reps! 
+            // I need to add state for assignment details: sets, reps, frequency.
+            
+            const payload = {
+                exercise_id: selectedExercise,
+                patient_ids: selectedPatients,
+                sets: assignmentDetails.sets,
+                reps: assignmentDetails.reps,
+                frequency: assignmentDetails.frequency,
+                notes: "" 
+            }
+            
+            await api.post('/doctor/assignments', payload)
+            
+            alert("Exercise assigned successfully!") // Simple feedback
+            
+            setShowAssignModal(false)
+            setSelectedExercise(null)
+            setSelectedPatients([])
+        } catch (e) {
+            console.error("Assignment failed", e)
+            alert("Failed to assign exercise.")
+        }
     }
   }
+
+  // Add state for assignment details
+  const [assignmentDetails, setAssignmentDetails] = useState({
+      sets: 3,
+      reps: 12,
+      frequency: 'daily'
+  })
 
   return (
     <div className="py-8 px-4 sm:px-6 lg:px-8">
@@ -254,7 +283,8 @@ export default function AssignExercisesPage() {
                             className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                             min="1"
                             max="10"
-                            defaultValue="3"
+                            value={assignmentDetails.sets}
+                            onChange={(e) => setAssignmentDetails({...assignmentDetails, sets: parseInt(e.target.value)})}
                           />
                           <input
                             type="number"
@@ -262,7 +292,8 @@ export default function AssignExercisesPage() {
                             className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
                             min="1"
                             max="50"
-                            defaultValue="12"
+                            value={assignmentDetails.reps}
+                            onChange={(e) => setAssignmentDetails({...assignmentDetails, reps: parseInt(e.target.value)})}
                           />
                         </div>
                       </div>
@@ -271,7 +302,11 @@ export default function AssignExercisesPage() {
                         <label className="block text-sm font-medium text-slate-700 mb-2">
                           Frequency
                         </label>
-                        <select className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500">
+                        <select 
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                            value={assignmentDetails.frequency}
+                            onChange={(e) => setAssignmentDetails({...assignmentDetails, frequency: e.target.value})}
+                        >
                           <option value="daily">Daily</option>
                           <option value="every_other_day">Every Other Day</option>
                           <option value="weekly">Weekly</option>
