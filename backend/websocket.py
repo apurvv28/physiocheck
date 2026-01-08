@@ -7,32 +7,59 @@ router = APIRouter()
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: dict[str, WebSocket] = {}
+        # Map patient_id -> WebSocket
+        self.patient_connections: dict[str, WebSocket] = {}
+        # Map patient_id -> List[WebSocket] (multiple doctors might monitor same patient)
+        self.doctor_connections: dict[str, list[WebSocket]] = {}
 
-    async def connect(self, patient_id: str, websocket: WebSocket):
+    async def connect_patient(self, patient_id: str, websocket: WebSocket):
         await websocket.accept()
-        self.active_connections[patient_id] = websocket
+        self.patient_connections[patient_id] = websocket
 
-    def disconnect(self, patient_id: str):
-        if patient_id in self.active_connections:
-            del self.active_connections[patient_id]
+    async def disconnect_patient(self, patient_id: str):
+        if patient_id in self.patient_connections:
+            del self.patient_connections[patient_id]
+        # Notify doctors?
+        
+    async def connect_doctor(self, patient_id: str, websocket: WebSocket):
+        await websocket.accept()
+        if patient_id not in self.doctor_connections:
+            self.doctor_connections[patient_id] = []
+        self.doctor_connections[patient_id].append(websocket)
 
-    async def send_message(self, patient_id: str, message: dict):
-        if patient_id in self.active_connections:
+    def disconnect_doctor(self, patient_id: str, websocket: WebSocket):
+        if patient_id in self.doctor_connections:
+            if websocket in self.doctor_connections[patient_id]:
+                self.doctor_connections[patient_id].remove(websocket)
+            if not self.doctor_connections[patient_id]:
+                del self.doctor_connections[patient_id]
+
+    async def signal_to_doctor(self, patient_id: str, message: dict):
+        # Patient sends signal to doctor(s)
+        if patient_id in self.doctor_connections:
+            for socket in self.doctor_connections[patient_id]:
+                try:
+                    await socket.send_json(message)
+                except Exception as e:
+                    print(f"Error signaling doctor: {e}")
+
+    async def signal_to_patient(self, patient_id: str, message: dict):
+        # Doctor sends signal to patient
+        if patient_id in self.patient_connections:
             try:
-                await self.active_connections[patient_id].send_json(message)
+                await self.patient_connections[patient_id].send_json(message)
             except Exception as e:
-                print(f"Error sending message to {patient_id}: {e}")
-                self.disconnect(patient_id)
+                print(f"Error signaling patient: {e}")
 
 manager = ConnectionManager()
 
-@router.websocket("/ws/doctor/monitor/{patient_id}")
+@router.websocket("/ws/doctor/monitor/{session_id}")
 async def monitor_patient(
     websocket: WebSocket, 
-    patient_id: str,
+    session_id: str,
     token: Optional[str] = Query(None)
 ):
+    print(f"DEBUG: Entering monitor_patient for session_id={session_id}")
     """
     WebSocket endpoint for doctors to monitor patient exercise sessions in real-time.
     Requires authentication token as query parameter.
@@ -50,36 +77,45 @@ async def monitor_patient(
             return
         
         # Verify user is a doctor
-        if user.user.user_metadata.get("role") != "doctor":
+        role = user.user.user_metadata.get("role")
+        if role != "doctor":
             await websocket.close(code=1008, reason="Unauthorized: Doctor access only")
             return
         
-        # Verify patient belongs to this doctor
-        patient = supabase.from_("patients")\
-            .select("id, full_name")\
-            .eq("id", patient_id)\
-            .eq("doctor_id", user.user.id)\
-            .single()\
+        # Fetch session to get patient_id
+        session_res = supabase.from_("exercise_sessions")\
+            .select("patient_id, patients(full_name)")\
+            .eq("id", session_id)\
+            .limit(1)\
             .execute()
         
-        if not patient.data:
-            await websocket.close(code=1008, reason="Patient not found or unauthorized")
+        if not session_res.data or len(session_res.data) == 0:
+            print("DEBUG: Session not found")
+            await websocket.close(code=1008, reason="Session not found")
             return
+            
+        session_data = session_res.data[0]
+        patient_id = session_data["patient_id"]
+        # Handle potential nested dict from join or manual extraction
+        patient_name = session_data.get("patients", {}).get("full_name", "Unknown Patient")
         
     except Exception as e:
         print(f"WebSocket auth error: {e}")
+        import traceback
+        traceback.print_exc()
         await websocket.close(code=1008, reason="Authentication failed")
         return
     
     # Connection authenticated, proceed with monitoring
-    await manager.connect(patient_id, websocket)
+    print(f"DEBUG: Authentication successful for patient {patient_id}, accepting connection")
+    await manager.connect_doctor(patient_id, websocket)
     
     try:
         # Send initial connection confirmation
         await websocket.send_json({
             "type": "connected",
             "patient_id": patient_id,
-            "patient_name": patient.data["full_name"],
+            "patient_name": patient_name,
             "timestamp": None
         })
         
@@ -94,10 +130,13 @@ async def monitor_patient(
                 if message.get("type") == "ping":
                     await websocket.send_json({"type": "pong"})
                 
+                elif message.get("type") == "signal":
+                    # Forward WebRTC signal to patient
+                    await manager.signal_to_patient(patient_id, message)
+
                 elif message.get("type") == "request_update":
                     # Send current patient status
-                    # In a real app, fetch latest session data
-                    await websocket.send_json({
+                     await websocket.send_json({
                         "type": "status_update",
                         "patient_id": patient_id,
                         "status": "monitoring"
@@ -118,7 +157,7 @@ async def monitor_patient(
     except Exception as e:
         print(f"WebSocket error for patient {patient_id}: {e}")
     finally:
-        manager.disconnect(patient_id)
+        manager.disconnect_doctor(patient_id, websocket)
         try:
             await websocket.close()
         except:
@@ -149,21 +188,21 @@ async def patient_session(
         patient = supabase.from_("patients")\
             .select("id")\
             .eq("auth_user_id", user.user.id)\
-            .single()\
+            .limit(1)\
             .execute()
         
-        if not patient.data:
+        if not patient.data or len(patient.data) == 0:
             await websocket.close(code=1008, reason="Patient profile not found")
             return
         
-        patient_id = patient.data["id"]
+        patient_id = patient.data[0]["id"]
         
     except Exception as e:
         print(f"WebSocket auth error: {e}")
         await websocket.close(code=1008, reason="Authentication failed")
         return
     
-    await websocket.accept()
+    await manager.connect_patient(patient_id, websocket)
     
     try:
         await websocket.send_json({
@@ -185,6 +224,17 @@ async def patient_session(
                         "timestamp": message.get("timestamp")
                     })
                     
+                    # ALSO broadcast data to doctor for live preview (simulated stats)
+                    # In real app, we'd process analysis here
+                    await manager.signal_to_doctor(patient_id, {
+                        **message,
+                        "type": "exercise_update" 
+                    })
+
+                elif message.get("type") == "signal":
+                    # Forward WebRTC signal to doctor
+                    await manager.signal_to_doctor(patient_id, message)
+                    
             except WebSocketDisconnect:
                 break
             except Exception as e:
@@ -194,6 +244,7 @@ async def patient_session(
     except Exception as e:
         print(f"WebSocket error: {e}")
     finally:
+        await manager.disconnect_patient(patient_id)
         try:
             await websocket.close()
         except:

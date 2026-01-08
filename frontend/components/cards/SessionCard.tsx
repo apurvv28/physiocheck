@@ -1,7 +1,8 @@
 'use client'
 
+import Link from 'next/link'
 import { motion } from 'framer-motion'
-import { Calendar, Clock, Target, TrendingUp, User, MoreVertical } from 'lucide-react'
+import { Calendar, Clock, Target, TrendingUp, User, MoreVertical, Video } from 'lucide-react'
 import { Card } from './Card'
 import { cn } from '@/lib/utils'
 
@@ -63,6 +64,15 @@ export function SessionCard({ session }: SessionCardProps) {
           </div>
           
           <div className="flex items-center space-x-3">
+            {session.status === 'in_progress' && (
+               <Link 
+                 href={`/doctor/sessions/live/${session.id}`}
+                 className="flex items-center space-x-1 px-3 py-1.5 bg-teal-600 text-white rounded-lg text-xs font-medium hover:bg-teal-700 transition"
+               >
+                 <Video className="w-3 h-3" />
+                 <span>Join</span>
+               </Link>
+            )}
             <span className={`px-3 py-1 text-xs rounded-full flex items-center space-x-1 ${config.color}`}>
               {config.icon}
               <span>{config.label}</span>

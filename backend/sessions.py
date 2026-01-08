@@ -23,30 +23,32 @@ def create_session(payload: CreateSessionPayload, request: Request):
         patient_res = supabase.from_("patients")\
             .select("id")\
             .eq("auth_user_id", user.id)\
-            .single()\
+            .limit(1)\
             .execute()
         
-        if not patient_res.data:
-            raise HTTPException(404, "Patient profile not found")
+        if not patient_res.data or len(patient_res.data) == 0:
+            print(f"Patient profile not found for user {user.id}")
+            raise HTTPException(404, "Patient profile not found. Please complete your profile.")
         
-        patient_id = patient_res.data["id"]
+        patient_id = patient_res.data[0]["id"]
         
         # Verify exercise exists
         exercise = supabase.from_("exercises")\
             .select("id")\
             .eq("id", payload.exercise_id)\
-            .single()\
+            .limit(1)\
             .execute()
         
-        if not exercise.data:
+        if not exercise.data or len(exercise.data) == 0:
+            print(f"Exercise not found: {payload.exercise_id}")
             raise HTTPException(404, "Exercise not found")
         
         # Create session
         session_data = {
             "patient_id": patient_id,
             "exercise_id": payload.exercise_id,
-            "duration_seconds": payload.duration_seconds,
-            "repetitions": payload.repetitions,
+            "duration_seconds": payload.duration_seconds or 0,
+            "repetitions": payload.repetitions or 0,
             "notes": payload.notes,
             "status": payload.status,
             "started_at": datetime.utcnow().isoformat()
@@ -57,6 +59,8 @@ def create_session(payload: CreateSessionPayload, request: Request):
             .execute()
         
         if not result.data:
+            print("Failed to insert session, result data empty")
+            print(f"Result error: {result}")
             raise Exception("Failed to create session")
         
         return result.data[0]
@@ -64,8 +68,13 @@ def create_session(payload: CreateSessionPayload, request: Request):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        traceback.print_exc()
         print(f"Error creating session: {e}")
-        raise HTTPException(500, "Failed to create exercise session")
+        # Improve error message if it's the specific PGRST116
+        if "PGRST116" in str(e):
+             raise HTTPException(404, "Data not found (PGRST116). Likely missing patient profile or exercise.")
+        raise HTTPException(500, f"Failed to create exercise session: {str(e)}")
 
 @router.patch("/{session_id}")
 def update_session(session_id: str, payload: dict, request: Request):

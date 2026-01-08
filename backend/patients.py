@@ -16,12 +16,16 @@ def my_exercises(request: Request):
         
         patient_id = patient_res.data["id"]
         
-        # Get exercises assigned to this patient
         exercises = supabase.from_("assigned_exercises")\
             .select("*, exercises(*)")\
             .eq("patient_id", patient_id)\
             .execute()
         
+        if exercises.data:
+            print("Debugging my_exercises: First item:", exercises.data[0])
+            for ex in exercises.data:
+                print(f"AssignID: {ex.get('id')} -> ExerciseID: {ex.get('exercise_id')}")
+
         return exercises.data or []
     except HTTPException:
         raise

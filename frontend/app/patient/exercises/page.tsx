@@ -45,7 +45,7 @@ export default function PatientExercisesPage() {
       console.log('Patient exercises data:', data)
 
       const mappedExercises: PatientExercise[] = data.map((ex: any) => ({
-        id: ex.id,
+        id: ex.exercise_id || ex.id,
         name: ex.exercises?.name || 'Unknown Exercise',
         description: ex.exercises?.description || '',
         difficulty: ex.exercises?.difficulty || 'beginner',

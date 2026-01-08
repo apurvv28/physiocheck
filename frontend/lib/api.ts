@@ -4,63 +4,80 @@ import { supabase } from './supabase'
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api/v1'
 
 export const api = axios.create({
-  baseURL: API_URL,
-  headers: {
-    'Content-Type': 'application/json',
-  },
+    baseURL: API_URL,
+    headers: {
+        'Content-Type': 'application/json',
+    },
 })
 
 api.interceptors.request.use(async (config) => {
-  const { data: { session } } = await supabase.auth.getSession()
+    const { data: { session } } = await supabase.auth.getSession()
 
-  if (session?.access_token) {
-    config.headers.Authorization = `Bearer ${session.access_token}`
-  }
+    if (session?.access_token) {
+        config.headers.Authorization = `Bearer ${session.access_token}`
+    }
 
-  return config
+    return config
 })
 
 api.interceptors.response.use(
-  (response) => response,
-  async (error) => {
-    if (error.response?.status === 401) {
-      await supabase.auth.signOut()
-      window.location.href = '/auth/login'
+    (response) => response,
+    async (error) => {
+        if (error.response?.status === 401) {
+            console.warn('Unauthorized - clearing session and redirecting')
+            await supabase.auth.signOut().catch(console.error)
+            if (typeof window !== 'undefined') {
+                localStorage.clear()
+                sessionStorage.clear()
+                window.location.href = '/login'
+            }
+        }
+        return Promise.reject(error)
     }
-    return Promise.reject(error)
-  }
 )
 
 export const apiEndpoints = {
-  doctor: {
-    dashboard: {
-      stats: '/doctor/dashboard/stats',
-      activeSessions: '/doctor/sessions/active',
+    auth: {
+        login: '/login',
+        register: '/register',
     },
     sessions: {
-      monitor: (patientId: string) => `ws://localhost:8000/ws/doctor/monitor/${patientId}`,
+        create: '/sessions',
+        update: (id: string) => `/sessions/${id}`,
+        get: (id: string) => `/sessions/${id}`,
     },
-    patients: {
-      list: '/doctor/patients',
-      create: '/doctor/create_patient',
-      details: (id: string) => `/doctor/patients/${id}`,
-      exercises: (id: string) => `/doctor/patients/${id}/exercises`,
-      stats: (id: string) => `/doctor/patients/${id}/stats`,
+    doctor: {
+        dashboard: {
+            stats: '/doctor/dashboard/stats',
+            activeSessions: '/doctor/sessions/active',
+        },
+        sessions: {
+            monitor: (patientId: string) => {
+                const host = typeof window !== 'undefined' ? window.location.hostname : 'localhost'
+                return `ws://${host}:8000/api/v1/ws/doctor/monitor/${patientId}`
+            },
+        },
+        patients: {
+            list: '/doctor/patients',
+            create: '/doctor/create_patient',
+            details: (id: string) => `/doctor/patients/${id}`,
+            exercises: (id: string) => `/doctor/patients/${id}/exercises`,
+            stats: (id: string) => `/doctor/patients/${id}/stats`,
+        },
     },
-  },
-  patient: {
-    dashboard: {
-      stats: '/patient/dashboard/stats',
-    },
-    session: {
-      history: '/patient/session/history',
+    patient: {
+        dashboard: {
+            stats: '/patient/dashboard/stats',
+        },
+        session: {
+            history: '/patient/session/history',
+        },
+        exercises: {
+            list: '/patient/my_exercises',
+        }
     },
     exercises: {
-      list: '/patient/my_exercises',
-    }
-  },
-  exercises: {
-    list: '/exercises',
-    details: (id: string) => `/exercises/${id}`,
-  },
+        list: '/exercises',
+        details: (id: string) => `/exercises/${id}`,
+    },
 }

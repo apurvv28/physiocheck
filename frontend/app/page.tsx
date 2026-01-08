@@ -146,7 +146,7 @@ export default function HomePage() {
               Join thousands of healthcare professionals using PhysioCheck to deliver better patient outcomes.
             </p>
             <Link
-              href="/auth/register"
+              href="/register"
               className="inline-flex items-center px-10 py-4 rounded-lg bg-teal-600 text-white font-semibold text-lg hover:bg-teal-700 transition-all duration-300 hover:scale-105"
             >
               Start Free Trial

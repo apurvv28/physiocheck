@@ -1,10 +1,12 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { Calendar, Filter, TrendingUp, Clock, Target, Users, Download } from 'lucide-react'
+import { Calendar, Filter, TrendingUp, Clock, Target, Users, Download, Activity } from 'lucide-react'
 import { Card } from '@/components/cards/Card'
 import { SessionCard } from '@/components/cards/SessionCard'
+import { api, apiEndpoints } from '@/lib/api'
+import { AnimatedLoader } from '@/components/loaders/AnimatedLoader'
 
 interface Session {
   id: string
@@ -20,59 +22,37 @@ interface Session {
 export default function SessionsPage() {
   const [dateRange, setDateRange] = useState<string>('week')
   const [statusFilter, setStatusFilter] = useState<string>('all')
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [loading, setLoading] = useState(true)
 
-  const sessions: Session[] = [
-    {
-      id: '1',
-      patientName: 'John Smith',
-      exerciseName: 'Shoulder Rehabilitation',
-      date: '2024-01-15',
-      duration: 15,
-      accuracy: 92,
-      reps: 36,
-      status: 'completed'
-    },
-    {
-      id: '2',
-      patientName: 'Sarah Johnson',
-      exerciseName: 'Knee Strengthening',
-      date: '2024-01-14',
-      duration: 22,
-      accuracy: 87,
-      reps: 44,
-      status: 'completed'
-    },
-    {
-      id: '3',
-      patientName: 'Michael Chen',
-      exerciseName: 'Spinal Mobility',
-      date: '2024-01-13',
-      duration: 18,
-      accuracy: 95,
-      reps: 54,
-      status: 'completed'
-    },
-    {
-      id: '4',
-      patientName: 'Emily Wilson',
-      exerciseName: 'Ankle Strengthening',
-      date: '2024-01-12',
-      duration: 12,
-      accuracy: 78,
-      reps: 24,
-      status: 'in_progress'
-    },
-    {
-      id: '5',
-      patientName: 'Robert Brown',
-      exerciseName: 'Shoulder Rehabilitation',
-      date: '2024-01-11',
-      duration: 0,
-      accuracy: 0,
-      reps: 0,
-      status: 'missed'
-    },
-  ]
+  useEffect(() => {
+    fetchSessions()
+  }, [])
+
+  const fetchSessions = async () => {
+    try {
+      // Using active sessions endpoint which returns recent sessions
+      const response = await api.get(apiEndpoints.doctor.dashboard.activeSessions)
+      const data = response.data
+      
+      const mappedSessions: Session[] = data.map((item: any) => ({
+        id: item.id,
+        patientName: item.patients?.full_name || 'Unknown Patient',
+        exerciseName: item.exercises?.title || 'Unknown Exercise',
+        date: item.created_at, // timestamp
+        duration: Math.round((item.duration_seconds || 0) / 60),
+        accuracy: item.accuracy || 0,
+        reps: item.repetitions || 0,
+        status: item.status || 'in_progress'
+      }))
+
+      setSessions(mappedSessions)
+    } catch (error) {
+      console.error('Failed to fetch sessions:', error)
+    } finally {
+      setLoading(false)
+    }
+  }
 
   const filteredSessions = sessions.filter(session => {
     if (statusFilter === 'all') return true
@@ -81,9 +61,17 @@ export default function SessionsPage() {
 
   const stats = {
     totalSessions: sessions.length,
-    avgAccuracy: Math.round(sessions.reduce((acc, s) => acc + s.accuracy, 0) / sessions.length),
+    avgAccuracy: sessions.length ? Math.round(sessions.reduce((acc, s) => acc + s.accuracy, 0) / sessions.length) : 0,
     totalDuration: sessions.reduce((acc, s) => acc + s.duration, 0),
-    completionRate: Math.round((sessions.filter(s => s.status === 'completed').length / sessions.length) * 100)
+    completionRate: sessions.length ? Math.round((sessions.filter(s => s.status === 'completed').length / sessions.length) * 100) : 0
+  }
+
+  if (loading) {
+      return (
+          <div className="flex items-center justify-center min-h-screen">
+              <AnimatedLoader message="Loading sessions..." />
+          </div>
+      )
   }
 
   return (
@@ -105,28 +93,24 @@ export default function SessionsPage() {
               value: stats.totalSessions,
               icon: <Calendar className="w-6 h-6" />,
               color: 'teal',
-              change: '+12%'
             },
             {
               title: 'Avg Accuracy',
               value: `${stats.avgAccuracy}%`,
               icon: <Target className="w-6 h-6" />,
               color: 'green',
-              change: '+5%'
             },
             {
               title: 'Total Duration',
               value: `${stats.totalDuration}m`,
               icon: <Clock className="w-6 h-6" />,
               color: 'blue',
-              change: '+8%'
             },
             {
               title: 'Completion Rate',
               value: `${stats.completionRate}%`,
               icon: <TrendingUp className="w-6 h-6" />,
               color: 'coral',
-              change: '+3%'
             },
           ].map((stat, index) => (
             <motion.div
@@ -141,9 +125,6 @@ export default function SessionsPage() {
                     <div className={`p-3 rounded-xl bg-${stat.color}-100 text-${stat.color}-600`}>
                       {stat.icon}
                     </div>
-                    <span className="text-sm font-medium text-green-600">
-                      {stat.change}
-                    </span>
                   </div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-1">
                     {stat.value}
@@ -199,16 +180,24 @@ export default function SessionsPage() {
 
         {/* Sessions List */}
         <div className="space-y-6">
-          {filteredSessions.map((session, index) => (
-            <motion.div
-              key={session.id}
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: index * 0.1 }}
-            >
-              <SessionCard session={session} />
-            </motion.div>
-          ))}
+          {filteredSessions.length === 0 ? (
+              <div className="text-center py-12 bg-slate-50 rounded-lg">
+                <Activity className="w-12 h-12 text-slate-300 mx-auto mb-4" />
+                <p className="text-slate-600">No sessions found</p>
+              </div>
+          ) : (
+            filteredSessions.map((session, index) => (
+                <motion.div
+                key={session.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.1 }}
+                >
+                <SessionCard session={session} />
+                </motion.div>
+            ))
+          )}
+        
         </div>
 
         {/* Analytics Chart Placeholder */}

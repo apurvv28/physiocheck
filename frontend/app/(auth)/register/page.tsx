@@ -4,7 +4,7 @@ import { useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import { Activity, Mail, Lock, User, Eye, EyeOff, Stethoscope, User as PatientIcon } from 'lucide-react'
-import { supabase } from '@/lib/supabase'
+import { api, apiEndpoints } from '@/lib/api'
 
 export default function RegisterPage() {
   const [email, setEmail] = useState('')
@@ -22,22 +22,16 @@ export default function RegisterPage() {
     setError('')
 
     try {
-      const { error } = await supabase.auth.signUp({
+      await api.post(apiEndpoints.auth.register, {
         email,
         password,
-        options: {
-          data: {
-            full_name: fullName,
-            role: role,
-          },
-        },
+        role,
+        full_name: fullName
       })
 
-      if (error) throw error
-
       setSuccess(true)
-    } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : 'An error occurred during registration'
+    } catch (err: any) {
+      const message = err.response?.data?.detail || err.message || 'An error occurred during registration'
       setError(message)
     } finally {
       setLoading(false)
@@ -66,7 +60,7 @@ export default function RegisterPage() {
           </p>
           <div className="mt-8">
             <Link
-              href="/auth/login"
+              href="/login"
               className="inline-flex items-center px-4 py-2 border border-transparent text-sm font-medium rounded-lg text-teal-600 bg-teal-50 hover:bg-teal-100 transition-colors duration-200"
             >
               Return to login
@@ -271,7 +265,7 @@ export default function RegisterPage() {
             <p className="text-sm text-slate-600">
               Already have an account?{' '}
               <Link
-                href="/auth/login"
+                href="/login"
                 className="font-medium text-teal-600 hover:text-teal-500 transition-colors duration-200"
               >
                 Sign in

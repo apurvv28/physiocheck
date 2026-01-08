@@ -82,7 +82,7 @@ export default function ForgotPasswordPage() {
               We've sent a password reset link to <strong>{email}</strong>
             </p>
             <Link
-              href="/auth/login"
+              href="/login"
               className="inline-flex items-center text-sm font-medium text-teal-600 hover:text-teal-500"
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
@@ -139,7 +139,7 @@ export default function ForgotPasswordPage() {
 
             <div className="mt-6 text-center">
               <Link
-                href="/auth/login"
+                href="/login"
                 className="inline-flex items-center text-sm font-medium text-teal-600 hover:text-teal-500"
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />

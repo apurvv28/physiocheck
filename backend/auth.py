@@ -1,17 +1,20 @@
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, EmailStr
+from typing import Optional
 from database import supabase
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(tags=["Auth"])
 
 class AuthBody(BaseModel):
     email: EmailStr
     password: str
+    role: Optional[str] = "patient"
+    full_name: Optional[str] = None
 
 @router.post("/login")
 async def login(body: AuthBody):
     try:
-        res = supabase.auth.sign_in_with_password(body.model_dump())
+        res = supabase.auth.sign_in_with_password({"email": body.email, "password": body.password})
         if not res.user or not res.session:
             raise HTTPException(status_code=401, detail="Invalid credentials")
         
@@ -52,21 +55,15 @@ async def login(body: AuthBody):
 @router.post("/register")
 async def register(body: AuthBody):
     try:
-        # Default role to doctor for now (or make it selectable)
-        if "options" not in body.model_dump():
-             # Initialize metadata with role if not present
-             body.email = body.email # dummy touch
+        role = body.role or "patient"
         
-        # We need to pass metadata. Currently pydantic model doesn't support it directly in signature.
-        # Let's use the underlying call.
-        
-        # Force doctor role for registration for this app context
         auth_props = {
             "email": body.email,
             "password": body.password,
             "options": {
                 "data": {
-                    "role": "doctor"
+                    "role": role,
+                    "full_name": body.full_name
                 }
             }
         }
@@ -76,11 +73,21 @@ async def register(body: AuthBody):
         if not res.user:
             raise HTTPException(status_code=400, detail="Registration failed")
             
-        # Auto-create doctor profile
+        # Create profile based on role
         try:
-             supabase.from_("doctors").insert({"auth_user_id": res.user.id}).execute()
+            if role == "doctor":
+                supabase.from_("doctors").insert({"auth_user_id": res.user.id}).execute()
+            elif role == "patient":
+                supabase.from_("patients").insert({
+                    "auth_user_id": res.user.id,
+                    "full_name": body.full_name or body.email.split('@')[0],
+                    "email": body.email,
+                    "status": "active" # Assuming default status
+                }).execute()
         except Exception as e:
-             print(f"Failed to create doctor profile: {e}")
+             print(f"Failed to create {role} profile: {e}")
+             # We might want to rollback auth user here if possible, but hard with Supabase.
+             # User exists but no profile.
              
         return {
             "message": "Registered successfully",
