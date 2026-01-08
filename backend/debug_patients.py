@@ -16,7 +16,12 @@ print(f"Creating temp doctor: {TEMP_EMAIL}")
 try:
     with httpx.Client() as client:
         # Register (which auto-creates doctor profile now in auth.py)
-        auth_res = client.post("http://127.0.0.1:8000/api/v1/auth/register", json={
+        BACKEND_URL = os.getenv("BACKEND_URL")
+        if not BACKEND_URL:
+             print("Error: BACKEND_URL environment variable is not set. Please set it to your deployed backend URL.")
+             sys.exit(1)
+
+        auth_res = client.post(f"{BACKEND_URL}/api/v1/auth/register", json={
             "email": TEMP_EMAIL,
             "password": PWD,
             "options": {"data": {"role": "doctor"}}
@@ -26,7 +31,7 @@ try:
             print("Register failed, trying login...")
             
         # Login
-        login_res = client.post("http://127.0.0.1:8000/api/v1/auth/login", json={
+        login_res = client.post(f"{BACKEND_URL}/api/v1/auth/login", json={
             "email": TEMP_EMAIL,
             "password": PWD
         })
@@ -41,7 +46,7 @@ try:
         # 2. Call patients endpoint
         headers = {"Authorization": f"Bearer {token}"}
         print("Fetching patients list...")
-        patients_res = client.get("http://127.0.0.1:8000/api/v1/doctor/patients", headers=headers)
+        patients_res = client.get(f"{BACKEND_URL}/api/v1/doctor/patients", headers=headers)
         
         print(f"Status Code: {patients_res.status_code}")
         print("Response Body:")

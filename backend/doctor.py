@@ -181,7 +181,7 @@ Login Email: {payload.email}
 Temporary Password: {temp_password}
 
 Login here:
-http://localhost:3000/login
+https://physiocheck.vercel.app/login
 
 Please change your password after login.
 
