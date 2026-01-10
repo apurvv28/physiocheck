@@ -12,6 +12,7 @@ def patched_client_init(self, *args, **kwargs):
 
 httpx.Client.__init__ = patched_client_init
 
+
 from supabase import create_client, Client
 
 load_dotenv()
