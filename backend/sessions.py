@@ -4,6 +4,7 @@ from typing import Optional
 from datetime import datetime
 from database import supabase
 from websocket import manager
+from notifications import create_notification
 
 router = APIRouter(prefix="/sessions", tags=["Sessions"])
 
@@ -63,6 +64,29 @@ def create_session(payload: CreateSessionPayload, request: Request):
             print("Failed to insert session, result data empty")
             print(f"Result error: {result}")
             raise Exception("Failed to create session")
+            
+        # Notify Doctor
+        try:
+             # Get doctor ID from patient record to notify them
+             # We need to fetch doctor_id from patient first
+             p_data = supabase.from_("patients").select("doctor_id, full_name").eq("id", patient_id).single().execute()
+             
+             if p_data.data and p_data.data.get("doctor_id"):
+                 doc_id = p_data.data["doctor_id"]
+                 # Get doctor auth id
+                 d_res = supabase.from_("doctors").select("auth_user_id").eq("id", doc_id).single().execute()
+                 
+                 if d_res.data:
+                     doc_auth_id = d_res.data["auth_user_id"]
+                     create_notification(
+                         user_id=doc_auth_id,
+                         title="Patient Started Session",
+                         message=f"{p_data.data.get('full_name', 'Patient')} has started a new exercise session.",
+                         type="info",
+                         data={"session_id": result.data[0]["id"], "patient_id": patient_id}
+                     )
+        except Exception as e:
+            print(f"Failed to notify doctor: {e}")
         
         return result.data[0]
         

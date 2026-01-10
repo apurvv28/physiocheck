@@ -30,6 +30,7 @@ export default function LiveSessionPage() {
   const wsRef = useRef<WebSocket | null>(null);
   const [data, setData] = useState<SessionData | null>(null);
   const [isConnected, setIsConnected] = useState(false);
+  const [patientName, setPatientName] = useState('Unknown Patient');
   const [error, setError] = useState<string | null>(null);
 
   // Video Call State
@@ -64,13 +65,21 @@ export default function LiveSessionPage() {
                return;
             }
 
-            if (message.type === 'signal') {
+            if (message.type === 'connected') {
+                if (message.patient_name) setPatientName(message.patient_name);
+            } else if (message.type === 'signal') {
                 handleSignal(message);
             } else if (message.type === 'exercise_update') {
                // Update stats from patient broadcast
                setData(message);
             } else if (message.type === 'status_update') {
                 // handle status
+            } else if (message.type === 'session_ended') {
+                alert("The patient has ended the session.");
+                endCall();
+                setIsConnected(false);
+                // Optionally redirect
+                // router.push('/doctor/sessions');
             }
 
           } catch (err) {
@@ -110,8 +119,9 @@ export default function LiveSessionPage() {
           
           const peer = new Peer({
               initiator: true,
-              trickle: false,
-              stream: localStream
+              trickle: true,
+              stream: localStream,
+              config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
           });
           
           peer.on('signal', (data) => {
@@ -120,6 +130,14 @@ export default function LiveSessionPage() {
                   target: 'patient',
                   data: data
               }));
+          });
+
+          peer.on('connect', () => {
+              console.log("DEBUG: Doctor Peer Connected!");
+          });
+
+          peer.on('error', (err) => {
+              console.error("DEBUG: Doctor Peer Error:", err);
           });
 
           peer.on('stream', (remoteStream) => {
@@ -140,13 +158,19 @@ export default function LiveSessionPage() {
   };
 
   const handleSignal = (message: any) => {
-      console.log("DEBUG: Received signal", message.data.type);
-      if (peerRef.current) {
+      // console.log("DEBUG: Received signal", message.data.type);
+      if (peerRef.current && !peerRef.current.destroyed) {
           try {
-              // Simply pass all signals to the peer instance
+             // De-duplication: If we are already connected/stable and receive an 'answer', ignore it.
+             // @ts-ignore - access internal pc to check state if needed, or rely on connected flag
+             if (message.data.type === 'answer' && peerRef.current.connected) {
+                 console.log("DEBUG: Ignoring duplicate answer (peer already connected)");
+                 return;
+             }
+             
               peerRef.current.signal(message.data);
           } catch (err) {
-              console.error("DEBUG: Failed to signal peer:", err);
+              console.warn("DEBUG: Failed to signal peer (likely duplicate or wrong state):", err);
           }
       }
   };
@@ -188,7 +212,7 @@ export default function LiveSessionPage() {
         </Link>
         <div>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">Live Session Monitor</h1>
-          <p className="text-slate-500">Patient ID: {id}</p>
+          <p className="text-slate-500">{patientName} (ID: {id.slice(0, 8)}...)</p>
         </div>
         <div className="ml-auto flex items-center gap-4">
              {isConnected && !isInCall && (
@@ -208,6 +232,21 @@ export default function LiveSessionPage() {
                     <PhoneOff className="h-4 w-4" />
                     End Call
                 </button>
+             )}
+             {/* Force End Session for Doctor */}
+             {isConnected && (
+                 <button
+                    onClick={() => {
+                        if (confirm("Are you sure you want to force end the session?")) {
+                             wsRef.current?.send(JSON.stringify({ type: 'session_ended' }));
+                             endCall();
+                             // router.push('/doctor/sessions');
+                        }
+                    }}
+                    className="px-4 py-2 bg-red-800 text-white rounded-lg hover:bg-red-900 transition text-sm"
+                 >
+                    Force End Session
+                 </button>
              )}
             <span className={`px-2.5 py-0.5 rounded-full text-xs font-medium ${
                 isConnected ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'

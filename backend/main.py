@@ -8,6 +8,8 @@ from patients import router as patient_router
 from exercises import router as exercises_router
 from sessions import router as sessions_router
 from websocket import router as websocket_router
+from profile import router as profile_router
+from notifications import router as notifications_router
 
 app = FastAPI(
     title="PhysioCheck Backend",
@@ -42,6 +44,8 @@ app.include_router(patient_router, prefix="/api/v1")
 app.include_router(exercises_router, prefix="/api/v1")
 app.include_router(sessions_router, prefix="/api/v1")
 app.include_router(websocket_router, prefix="/api/v1")
+app.include_router(profile_router, prefix="/api/v1")
+app.include_router(notifications_router, prefix="/api/v1")
 
 @app.get("/")
 def root():

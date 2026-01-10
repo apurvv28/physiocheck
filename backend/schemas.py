@@ -75,3 +75,22 @@ class ExerciseSession(SessionBase):
 
 class CreatePatientRequest(PatientBase):
     sendCredentials: bool = True
+
+class UserProfile(BaseModel):
+    id: UUID
+    email: EmailStr
+    full_name: Optional[str] = None
+    role: str
+    phone: Optional[str] = None
+    # Common fields that might be useful
+    avatar_url: Optional[str] = None
+
+class UserProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    phone: Optional[str] = None
+    # Add other updatable fields as needed
+
+class ChangePasswordRequest(BaseModel):
+    old_password: str
+    new_password: str
+

@@ -2,15 +2,16 @@
 
 import { useState, useEffect } from 'react'
 import { motion } from 'framer-motion'
-import { 
-  Target, Clock, Trophy, Calendar, 
-  TrendingUp, Play, CheckCircle, Activity 
+import {
+  Target, Clock, Trophy, Calendar,
+  TrendingUp, Play, CheckCircle, Activity
 } from 'lucide-react'
 import { Card } from '@/components/cards/Card'
 import { ProgressRing } from '@/components/charts/ProgressRing'
 import { ExerciseCard } from '@/components/cards/ExerciseCard'
 import { AnimatedLoader } from '@/components/loaders/AnimatedLoader'
 import { api, apiEndpoints } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
 
 interface PatientStats {
@@ -45,29 +46,100 @@ export default function PatientDashboard() {
         api.get(apiEndpoints.patient.dashboard.stats),
         api.get(apiEndpoints.patient.exercises.list)
       ])
-      
+
       const statsData = statsRes.data
+      const exercisesList = exercisesRes.data || []
+
+      // Fetch sessions for streak calculation
+      const { data: { user } } = await supabase.auth.getUser()
+      let streak = 0
+      let completedToday = 0
+
+      if (user) {
+        const { data: patients } = await supabase
+          .from('patients')
+          .select('id')
+          .eq('auth_user_id', user.id)
+
+        if (patients && patients.length > 0) {
+          const patientIds = patients.map(p => p.id)
+
+          const { data: sessions } = await supabase
+            .from('exercise_sessions')
+            .select('started_at, completed_at')
+            .in('patient_id', patientIds)
+            .not('completed_at', 'is', null)
+            .order('started_at', { ascending: false })
+
+          if (sessions && sessions.length > 0) {
+            const today = new Date()
+            today.setHours(0, 0, 0, 0)
+
+            // Get unique dates of completed sessions
+            const sessionDates = sessions
+              .map(s => {
+                const date = new Date(s.completed_at)
+                date.setHours(0, 0, 0, 0)
+                return date.getTime()
+              })
+              .filter((date, index, self) => self.indexOf(date) === index)
+              .sort((a, b) => b - a)
+
+            // Calculate streak
+            let currentDate = sessionDates[0]
+            const todayTime = today.getTime()
+            const yesterdayTime = todayTime - 24 * 60 * 60 * 1000
+
+            if (currentDate >= yesterdayTime) {
+              streak = 1
+              for (let i = 1; i < sessionDates.length; i++) {
+                const expectedDate = currentDate - 24 * 60 * 60 * 1000
+                if (sessionDates[i] === expectedDate) {
+                  streak++
+                  currentDate = sessionDates[i]
+                } else {
+                  break
+                }
+              }
+            }
+
+            // Count completed today
+            completedToday = sessions.filter(s => {
+              const sessionDate = new Date(s.completed_at)
+              return sessionDate >= today
+            }).length
+          }
+        }
+      }
+
       setStats({
-        totalExercises: statsData.totalSessions, // Aligning fields roughly
-        completedToday: 0, // Not provided by stats endpoint
-        streak: statsData.compliance > 0 ? 1 : 0, // Mocking based on compliance
-        avgAccuracy: statsData.avgAccuracy
+        totalExercises: exercisesList.length,
+        completedToday: completedToday,
+        streak: streak,
+        avgAccuracy: statsData.avgAccuracy || 0
       })
-      
+
       // Filter exercises due today (mock logic: all active exercises are "due" for demo)
-      const upcoming = exercisesRes.data.map((ex: any) => ({
-        id: ex.exercise_id || ex.id, // Use FK exercise_id if available (assigned_exercise table)
-        name: ex.exercises?.name || ex.exercise_name || 'Unknown Exercise', // Fixed: use 'name' instead of 'title'
-        description: ex.exercises?.description || ex.exercise_description || '',
-        difficulty: ex.exercises?.difficulty || 'beginner',
-        duration: ex.exercises?.duration_minutes || 15,
-        dueToday: true,
-        bodyPart: []
-      }))
-      
+      const upcoming = exercisesList.map((ex: any) => {
+        let exerciseData = ex.exercises || ex.exercise || ex
+        if (Array.isArray(exerciseData)) {
+          exerciseData = exerciseData[0] || {}
+        }
+
+        return {
+          id: ex.exercise_id || ex.id,
+          name: exerciseData.title || exerciseData.name || exerciseData.exercise_name || ex.title || ex.name || 'Unknown Exercise',
+          description: exerciseData.description || exerciseData.exercise_description || ex.description || ex.exercise_description || '',
+          difficulty: exerciseData.difficulty || ex.difficulty || 'beginner',
+          duration: exerciseData.duration_minutes || ex.duration_minutes || 15,
+          dueToday: true,
+          bodyPart: exerciseData.body_part || []
+        }
+      })
+
       setUpcomingExercises(upcoming)
     } catch (error) {
-       // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console
       console.error('Error fetching dashboard data:', error)
     } finally {
       setLoading(false)
@@ -205,13 +277,12 @@ export default function PatientDashboard() {
                                     <Clock className="w-4 h-4 mr-1" />
                                     {exercise.duration} min
                                   </span>
-                                  <span className={`px-2 py-1 rounded-full text-xs ${
-                                    exercise.difficulty === 'beginner'
-                                      ? 'bg-green-100 text-green-800'
-                                      : exercise.difficulty === 'intermediate'
+                                  <span className={`px-2 py-1 rounded-full text-xs ${exercise.difficulty === 'beginner'
+                                    ? 'bg-green-100 text-green-800'
+                                    : exercise.difficulty === 'intermediate'
                                       ? 'bg-yellow-100 text-yellow-800'
                                       : 'bg-coral-100 text-coral-800'
-                                  }`}>
+                                    }`}>
                                     {exercise.difficulty}
                                   </span>
                                 </div>
@@ -280,7 +351,7 @@ export default function PatientDashboard() {
                       </div>
                       <span className="text-lg font-bold text-green-600">94%</span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="p-2 rounded-lg bg-blue-100">
@@ -293,7 +364,7 @@ export default function PatientDashboard() {
                       </div>
                       <span className="text-lg font-bold text-slate-900">2h 15m</span>
                     </div>
-                    
+
                     <div className="flex items-center justify-between">
                       <div className="flex items-center space-x-3">
                         <div className="p-2 rounded-lg bg-coral-100">

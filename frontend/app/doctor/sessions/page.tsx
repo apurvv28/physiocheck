@@ -31,8 +31,8 @@ export default function SessionsPage() {
 
   const fetchSessions = async () => {
     try {
-      // Using active sessions endpoint which returns recent sessions
-      const response = await api.get(apiEndpoints.doctor.dashboard.activeSessions)
+      // Using history endpoint to get all sessions
+      const response = await api.get('/doctor/sessions/history')
       const data = response.data
       
       const mappedSessions: Session[] = data.map((item: any) => ({

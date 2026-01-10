@@ -26,6 +26,7 @@ class ConnectionManager:
         if patient_id not in self.doctor_connections:
             self.doctor_connections[patient_id] = []
         self.doctor_connections[patient_id].append(websocket)
+        print(f"DEBUG: Doctor connected for {patient_id}. Total docs: {len(self.doctor_connections[patient_id])}. Active keys: {list(self.doctor_connections.keys())}")
 
     def disconnect_doctor(self, patient_id: str, websocket: WebSocket):
         if patient_id in self.doctor_connections:
@@ -33,23 +34,30 @@ class ConnectionManager:
                 self.doctor_connections[patient_id].remove(websocket)
             if not self.doctor_connections[patient_id]:
                 del self.doctor_connections[patient_id]
+        print(f"DEBUG: Doctor disconnected for {patient_id}. Active keys: {list(self.doctor_connections.keys())}")
 
     async def signal_to_doctor(self, patient_id: str, message: dict):
         # Patient sends signal to doctor(s)
         if patient_id in self.doctor_connections:
+            # print(f"DEBUG: Signaling doctor for patient {patient_id}, type={message.get('type')}")
             for socket in self.doctor_connections[patient_id]:
                 try:
                     await socket.send_json(message)
                 except Exception as e:
                     print(f"Error signaling doctor: {e}")
+        else:
+            print(f"DEBUG: No doctor connected for patient {patient_id}. Active keys: {list(self.doctor_connections.keys())}")
 
     async def signal_to_patient(self, patient_id: str, message: dict):
         # Doctor sends signal to patient
         if patient_id in self.patient_connections:
+            # print(f"DEBUG: Signaling patient {patient_id}, type={message.get('type')}")
             try:
                 await self.patient_connections[patient_id].send_json(message)
             except Exception as e:
                 print(f"Error signaling patient: {e}")
+        else:
+            print(f"DEBUG: Patient {patient_id} not connected/found for signal. Active keys: {list(self.patient_connections.keys())}")
 
 manager = ConnectionManager()
 
@@ -107,11 +115,18 @@ async def monitor_patient(
         return
     
     # Connection authenticated, proceed with monitoring
-    print(f"DEBUG: Authentication successful for patient {patient_id}, accepting connection")
+    doctor_name = user.user.user_metadata.get("full_name", "Doctor")
+    print(f"DEBUG: Authentication successful for patient {patient_id} by {doctor_name}, accepting connection")
     await manager.connect_doctor(patient_id, websocket)
     
+    # Notify patient that doctor has joined
+    await manager.signal_to_patient(patient_id, {
+        "type": "doctor_connected",
+        "doctor_name": doctor_name
+    })
+    
     try:
-        # Send initial connection confirmation
+        # Send initial connection confirmation to doctor
         await websocket.send_json({
             "type": "connected",
             "patient_id": patient_id,
@@ -140,6 +155,12 @@ async def monitor_patient(
                         "type": "status_update",
                         "patient_id": patient_id,
                         "status": "monitoring"
+                    })
+
+                elif message.get("type") == "session_ended":
+                    await manager.signal_to_patient(patient_id, {
+                         "type": "session_ended",
+                         "reason": "Doctor ended session"
                     })
                     
             except WebSocketDisconnect:
@@ -229,6 +250,12 @@ async def patient_session(
                     await manager.signal_to_doctor(patient_id, {
                         **message,
                         "type": "exercise_update" 
+                    })
+
+                elif message.get("type") == "session_ended":
+                    await manager.signal_to_doctor(patient_id, {
+                        "type": "session_ended",
+                        "reason": "Patient ended session"
                     })
 
                 elif message.get("type") == "signal":

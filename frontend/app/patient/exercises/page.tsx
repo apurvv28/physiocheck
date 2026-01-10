@@ -25,6 +25,9 @@ interface PatientExercise {
   sets: number
   reps: number
   frequency: string
+  startDate?: string
+  endDate?: string
+  selectedDays?: string[]
 }
 
 export default function PatientExercisesPage() {
@@ -39,27 +42,56 @@ export default function PatientExercisesPage() {
 
   const fetchExercises = async () => {
     try {
-      const response = await api.get('/patient/my_exercises')
-      const data = response.data
+      const [exercisesRes, historyRes] = await Promise.all([
+          api.get('/patient/my_exercises'),
+          api.get('/patient/session/history')
+      ])
+
+      const data = exercisesRes.data
+      const sessions = historyRes.data || []
       
       console.log('Patient exercises data:', data)
 
-      const mappedExercises: PatientExercise[] = data.map((ex: any) => ({
-        id: ex.exercise_id || ex.id,
-        name: ex.exercises?.name || 'Unknown Exercise',
-        description: ex.exercises?.description || '',
-        difficulty: ex.exercises?.difficulty || 'beginner',
-        duration: Math.round((ex.exercises?.default_duration_seconds || 900) / 60),
-        bodyPart: ex.exercises?.body_part || [],
-        equipment: ex.exercises?.equipment || [],
-        assignedDate: ex.assigned_at || ex.created_at, // assigned_at is the correct field
-        dueDate: ex.dueDate, // Might not exist
-        completed: false, // You might want to check session history to see if completed today
-        progress: 0,
-        sets: ex.sets || 0,
-        reps: ex.reps || 0,
-        frequency: ex.frequency || 'daily'
-      }))
+      const mappedExercises: PatientExercise[] = data.map((ex: any) => {
+        // Calculate progress based on sessions
+        const exerciseSessions = sessions.filter((s: any) => s.exercise_id === ex.exercise_id && s.status === 'completed')
+        // Simple progress: (completed / (sets * 10?? No, maybe just total count for now))
+        // Better: let's just show count of sessions completed for now, or percentage if we assume daily * duration
+        
+        let expectedSessions = 1;
+        if (ex.start_date && ex.end_date) {
+             const start = new Date(ex.start_date);
+             const end = new Date(ex.end_date);
+             const days = Math.ceil((end.getTime() - start.getTime()) / (1000 * 3600 * 24));
+             if (ex.frequency === 'daily') expectedSessions = days;
+             else if (ex.frequency === 'weekly') expectedSessions = Math.ceil(days / 7);
+             else if (ex.frequency === 'specific_days' && ex.selected_days) {
+                 // Rough estimate or precise calc
+                 expectedSessions = Math.ceil(days * (ex.selected_days.length / 7));
+             }
+        }
+        const progress = Math.min(100, Math.round((exerciseSessions.length / (expectedSessions || 1)) * 100));
+
+
+        return {
+            id: ex.exercise_id || ex.id,
+            name: ex.exercises?.name || 'Unknown Exercise',
+            description: ex.exercises?.description || '',
+            difficulty: ex.exercises?.difficulty || 'beginner',
+            duration: Math.round((ex.exercises?.default_duration_seconds || 900) / 60),
+            bodyPart: ex.exercises?.body_part || [],
+            equipment: ex.exercises?.equipment || [],
+            assignedDate: ex.assigned_at || ex.created_at,
+            dueDate: ex.end_date, // Use end_date as due date
+            startDate: ex.start_date,
+            endDate: ex.end_date,
+            selectedDays: ex.selected_days || [],
+            completed: false, 
+            progress: progress,
+            sets: ex.sets || 0,
+            reps: ex.reps || 0,
+            frequency: ex.frequency || 'daily'
+      }})
       
       setExercises(mappedExercises)
     } catch (error) {
@@ -277,12 +309,25 @@ export default function PatientExercisesPage() {
                           <div className="text-slate-600">
                             Progress: {exercise.progress}%
                           </div>
+                        {exercise.startDate && exercise.endDate && (
+                           <div className="flex items-center space-x-2 text-sm text-slate-600 col-span-2">
+                            <Calendar className="w-4 h-4" />
+                            <span>
+                                {new Date(exercise.startDate).toLocaleDateString()} - {new Date(exercise.endDate).toLocaleDateString()}
+                            </span>
+                          </div>
+                        )}
                         </div>
+                        {exercise.selectedDays && exercise.selectedDays.length > 0 && (
+                             <div className="text-xs font-medium text-slate-500 bg-slate-50 p-2 rounded mb-2">
+                                 Days: {exercise.selectedDays.join(', ')}
+                             </div>
+                        )}
                         {exercise.dueDate && !exercise.completed && (
                           <div className="flex items-center space-x-2 text-sm">
                             <Calendar className="w-4 h-4 text-coral-600" />
                             <span className="text-coral-700">
-                              Due: {new Date(exercise.dueDate).toLocaleDateString()}
+                              Ends: {new Date(exercise.dueDate).toLocaleDateString()}
                             </span>
                           </div>
                         )}

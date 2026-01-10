@@ -5,10 +5,13 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Activity, Menu, X, User, LogOut } from 'lucide-react'
+import { UserProfileDialog } from '@/components/profile/UserProfileDialog'
+import { NotificationCenter } from './NotificationCenter'
 import { useAuth } from '@/hooks/useAuth'
 
 export function Navigation() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
+  const [isProfileOpen, setIsProfileOpen] = useState(false)
   const { user, role, signOut } = useAuth()
   const pathname = usePathname()
 
@@ -90,10 +93,14 @@ export function Navigation() {
           <div className="hidden md:flex items-center space-x-4">
             {user ? (
               <div className="flex items-center space-x-3">
+                <NotificationCenter />
                 <div className="w-8 h-8 rounded-full bg-teal-100 flex items-center justify-center">
                   <User className="w-4 h-4 text-teal-600" />
                 </div>
-                <div>
+                <div 
+                  className="cursor-pointer" 
+                  onClick={() => setIsProfileOpen(true)}
+                >
                   <p className="text-sm font-medium text-slate-900">
                     {user.email?.split('@')[0]}
                   </p>
@@ -169,6 +176,10 @@ export function Navigation() {
           </motion.div>
         )}
       </AnimatePresence>
+      <UserProfileDialog 
+        isOpen={isProfileOpen} 
+        onClose={() => setIsProfileOpen(false)} 
+      />
     </nav>
   )
 }

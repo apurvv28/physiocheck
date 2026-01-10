@@ -5,6 +5,7 @@ import './globals.css'
 import { Providers } from '@/components/providers'
 import { Navigation } from '@/components/navigation/Navigation'
 import { AuthProvider } from '@/components/providers/AuthProvider'
+import { NotificationProvider } from '@/components/providers/NotificationProvider'
 
 const inter = Inter({
   subsets: ['latin'],
@@ -33,12 +34,14 @@ export default function RootLayout({
       <body className={`${inter.variable} ${sourceSerif.variable} font-sans h-full`}>
         <Providers>
           <AuthProvider>
-            <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
-              <Navigation />
-              <main className="pt-16">
-                {children}
-              </main>
-            </div>
+            <NotificationProvider>
+              <div className="min-h-screen bg-gradient-to-b from-slate-50 to-slate-100">
+                <Navigation />
+                <main className="pt-16">
+                  {children}
+                </main>
+              </div>
+            </NotificationProvider>
           </AuthProvider>
         </Providers>
       </body>

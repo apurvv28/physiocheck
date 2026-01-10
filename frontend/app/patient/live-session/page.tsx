@@ -34,6 +34,7 @@ export default function LiveSessionPage() {
   const [elapsedTime, setElapsedTime] = useState(0)
   const [showCountdown, setShowCountdown] = useState(false)
   const [isConnected, setIsConnected] = useState(false)
+  const [doctorName, setDoctorName] = useState('Doctor');
   const [sessionId, setSessionId] = useState<string | null>(null)
   
   const [liveSessionData, setLiveSessionData] = useState<LiveSessionData>({
@@ -112,20 +113,31 @@ export default function LiveSessionPage() {
   }, [isStarted])
 
   const handleSignal = (message: any) => {
-    // If we receive an offer and no peer exists, creating a peer to answer
+    // If we receive an offer, it means the doctor is initiating (or re-initiating) a call.
     if (message.data.type === 'offer') {
+        // If we already have a peer, destroy it to accept the new call
+        if (peerRef.current) {
+            console.log("Received new offer, destroying old peer");
+            peerRef.current.destroy();
+            peerRef.current = null;
+        }
         createPeer(message.data)
-    } else if (peerRef.current) {
-        // If we already have a peer, signal it (ice candidate etc)
-        peerRef.current.signal(message.data)
+    } else if (peerRef.current && !peerRef.current.destroyed) {
+        // For other signals (candidates, etc), pass to existing peer
+        try {
+            peerRef.current.signal(message.data)
+        } catch (err) {
+            console.warn("Error signaling peer:", err);
+        }
     }
   }
 
   const createPeer = (signal: any) => {
       const peer = new Peer({
           initiator: false,
-          trickle: false,
-          stream: streamRef.current || undefined
+          trickle: true,
+          stream: streamRef.current || undefined,
+          config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
       })
 
       peer.on('signal', (data) => {
@@ -136,7 +148,16 @@ export default function LiveSessionPage() {
           }))
       })
 
+      peer.on('connect', () => {
+          console.log("DEBUG: Patient Peer Connected!");
+      })
+
+      peer.on('error', (err) => {
+          console.error("DEBUG: Patient Peer Error:", err);
+      })
+
       peer.on('stream', (stream) => {
+          console.log("DEBUG: Patient Received Doctor Stream");
           setDoctorStream(stream)
           if (doctorVideo.current) {
               doctorVideo.current.srcObject = stream
@@ -241,6 +262,13 @@ export default function LiveSessionPage() {
         }
     }
 
+    // Send session_ended signal
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+        wsRef.current.send(JSON.stringify({
+            type: 'session_ended'
+        }))
+    }
+
     setIsStarted(false)
     setElapsedTime(0)
     setSessionId(null)
@@ -285,8 +313,8 @@ export default function LiveSessionPage() {
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
-            <h1 className="text-3xl font-bold text-white">Live Exercise Session</h1>
-            <p className="text-slate-300 mt-2">
+            <h1 className="text-3xl font-bold text-slate-900">Live Exercise Session</h1>
+            <p className="text-slate-600 mt-2">
               Shoulder Rehabilitation - Range of Motion
             </p>
           </div>
@@ -300,13 +328,16 @@ export default function LiveSessionPage() {
                 {isConnected ? 'Live Monitoring Active' : 'Waiting for connection...'}
               </span>
             </div>
-            <button
-              onClick={endSession}
-              className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-white/10 text-white hover:bg-white/20 transition-colors duration-200"
-            >
-              <X className="w-5 h-5" />
-              <span>End Session</span>
-            </button>
+
+            {isStarted && (
+              <button
+                onClick={endSession}
+                className="flex items-center space-x-2 px-4 py-2 rounded-lg bg-red-600 text-white hover:bg-red-700 transition-colors duration-200"
+              >
+                <X className="w-5 h-5" />
+                <span>End Session</span>
+              </button>
+            )}
           </div>
         </div>
 

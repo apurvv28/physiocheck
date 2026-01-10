@@ -49,10 +49,10 @@ export default function PatientsPage() {
         name: p.full_name,
         email: p.email || '',
         phone: p.phone || 'N/A',
-        lastSession: 'No sessions yet', // Placeholder as list endpoint doesn't return this
-        compliance: 0, // Placeholder
+        lastSession: p.last_session_at ? new Date(p.last_session_at).toLocaleDateString() : 'No sessions yet',
+        compliance: p.compliance || 0,
         status: 'active', // Default status
-        assignedExercises: 0, // Placeholder
+        assignedExercises: p.assigned_exercises_count || 0,
         nextAppointment: undefined
       }))
       

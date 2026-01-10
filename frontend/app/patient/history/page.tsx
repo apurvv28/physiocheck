@@ -1,12 +1,13 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { motion } from 'framer-motion'
 import { Calendar, Filter, TrendingUp, Clock, Target, Download, Eye } from 'lucide-react'
 import { Card } from '@/components/cards/Card'
 import { ProgressRing } from '@/components/charts/ProgressRing'
 import { AnimatedLoader } from '@/components/loaders/AnimatedLoader'
 import { api, apiEndpoints } from '@/lib/api'
+import { supabase } from '@/lib/supabase'
 
 interface SessionHistory {
   id: string
@@ -17,55 +18,174 @@ interface SessionHistory {
   accuracy: number
   sets: number
   notes?: string
+  startedAt?: string
 }
 
 export default function HistoryPage() {
   const [sessions, setSessions] = useState<SessionHistory[]>([])
-  const [dateRange, setDateRange] = useState<string>('month')
+  const [dateRange, setDateRange] = useState<string>('year')
   const [loading, setLoading] = useState(true)
+  const [patientName, setPatientName] = useState<string>('')
+  const [debugInfo, setDebugInfo] = useState<any>(null)
 
   useEffect(() => {
     fetchHistory()
-  }, [])
+  }, []) // Keep empty dep array for initial fetch, filtering is local
 
   const fetchHistory = async () => {
     try {
-      const response = await api.get(apiEndpoints.patient.session.history)
-      const data = response.data
-      
-      const mappedSessions: SessionHistory[] = data.map((s: any) => ({
-        id: s.id,
-        date: s.session_start,
-        exerciseName: s.exercise_name,
-        duration: 15, // Placeholder, compute from start/end if available
-        reps: s.total_reps,
-        accuracy: s.accuracy_percent,
-        sets: 3, // Placeholder, not in session schema
-        notes: s.notes
-      }))
-      
+      const { data: { user } } = await supabase.auth.getUser()
+      console.log('Current User:', user)
+      if (!user) return
+
+      const { data: patients, error: patientError } = await supabase
+        .from('patients')
+        .select('id, full_name')
+        .eq('auth_user_id', user.id)
+
+      if (patientError) {
+        console.error('Error fetching patient:', patientError)
+        setDebugInfo({ error: 'Error fetching patients', details: patientError })
+        return
+      }
+
+      if (!patients || patients.length === 0) {
+        console.warn('No patient found for this user.')
+        setDebugInfo({
+          error: 'No patient profile found for this user',
+          auth_user_id: user.id,
+          auth_email: user.email,
+          message: 'Check if patients table has a record with this auth_user_id'
+        })
+        return
+      }
+
+      setPatientName(patients.map(p => p.full_name).join(', '))
+
+      const patientIds = patients.map(p => p.id)
+
+      const { data: sessionsData, error } = await supabase
+        .from('exercise_sessions')
+        .select(`
+          id,
+          started_at,
+          completed_at,
+          duration_seconds,
+          repetitions,
+          notes,
+          exercise:exercises (
+            name
+          )
+        `)
+        .in('patient_id', patientIds) // Check ALL patient IDs
+        .order('started_at', { ascending: false })
+
+      if (error) {
+        setDebugInfo({ error: 'Error fetching sessions', details: error })
+        throw error
+      }
+
+      setDebugInfo({
+        user_id: user.id,
+        patient_count: patients.length,
+        patient_ids: patientIds,
+        sessions_found: sessionsData?.length || 0
+      })
+
+      const mappedSessions: SessionHistory[] = (sessionsData || []).map((s: any) => {
+        let duration = 0
+        // Precise calculation: completed_at - started_at
+        if (s.started_at && s.completed_at) {
+          const start = new Date(s.started_at).getTime()
+          const end = new Date(s.completed_at).getTime()
+          // diff is in ms, so /1000/60 for minutes
+          if (!isNaN(start) && !isNaN(end) && end > start) {
+            duration = Math.round((end - start) / 60000)
+          }
+        }
+
+        // Fallback or explicit duration override if calculation failed or was 0
+        if (duration === 0 && s.duration_seconds) {
+          duration = Math.round(s.duration_seconds / 60)
+        }
+
+        return {
+          id: s.id,
+          date: s.started_at || s.created_at, // actual date object/string
+          startedAt: s.started_at,
+          exerciseName: s.exercise?.name || 'Unknown Exercise',
+          duration: duration > 0 ? duration : 0,
+          reps: s.repetitions || 0,
+          accuracy: 85, // Mock data as per original or replace with real column if available
+          sets: 1, // Default or fetch real data
+          notes: s.notes
+        }
+      })
+
+      console.log('Mapped Sessions:', mappedSessions)
       setSessions(mappedSessions)
     } catch (error) {
-       // eslint-disable-next-line no-console
+      // eslint-disable-next-line no-console
       console.error('Error fetching history:', error)
     } finally {
       setLoading(false)
     }
   }
 
-  const stats = {
-    totalSessions: sessions.length,
-    avgAccuracy: Math.round(sessions.reduce((acc, s) => acc + s.accuracy, 0) / sessions.length),
-    totalDuration: sessions.reduce((acc, s) => acc + s.duration, 0),
-    totalReps: sessions.reduce((acc, s) => acc + s.reps, 0)
-  }
+  // Filter sessions based on selected range
+  const filteredSessions = useMemo(() => {
+    const now = new Date()
+    return sessions.filter(session => {
+      if (!session.date) return false
+      const sessionDate = new Date(session.date)
+      if (isNaN(sessionDate.getTime())) return false
+
+      switch (dateRange) {
+        case 'week': {
+          const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
+          return sessionDate >= weekAgo
+        }
+        case 'month': {
+          const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000)
+          return sessionDate >= monthAgo
+        }
+        case 'quarter': {
+          const quarterAgo = new Date(now.getTime() - 90 * 24 * 60 * 60 * 1000)
+          return sessionDate >= quarterAgo
+        }
+        case 'year': {
+          const yearAgo = new Date(now.getTime() - 365 * 24 * 60 * 60 * 1000)
+          return sessionDate >= yearAgo
+        }
+        default:
+          return true
+      }
+    })
+  }, [sessions, dateRange])
+
+  // Calculate stats based on FILTERED sessions
+  const stats = useMemo(() => {
+    return {
+      totalSessions: filteredSessions.length,
+      avgAccuracy: filteredSessions.length > 0
+        ? Math.round(filteredSessions.reduce((acc, s) => acc + s.accuracy, 0) / filteredSessions.length)
+        : 0,
+      totalDuration: filteredSessions.reduce((acc, s) => acc + s.duration, 0),
+      totalReps: filteredSessions.reduce((acc, s) => acc + s.reps, 0)
+    }
+  }, [filteredSessions])
+
 
   const formatDate = (dateString: string) => {
+    if (!dateString) return 'N/A'
     const date = new Date(dateString)
+    if (isNaN(date.getTime())) return 'Invalid Date'
     return date.toLocaleDateString('en-US', {
       weekday: 'short',
       month: 'short',
-      day: 'numeric'
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
     })
   }
 
@@ -84,7 +204,7 @@ export default function HistoryPage() {
         <div className="mb-8">
           <h1 className="text-3xl font-bold text-slate-900">Session History</h1>
           <p className="text-slate-600 mt-2">
-            Track your progress and view past exercise sessions
+            Track your progress and view past exercise sessions {patientName && `for ${patientName}`}
           </p>
         </div>
 
@@ -96,28 +216,24 @@ export default function HistoryPage() {
               value: stats.totalSessions,
               icon: <Calendar className="w-6 h-6" />,
               color: 'teal',
-              change: '+15%'
             },
             {
               title: 'Avg Accuracy',
               value: `${stats.avgAccuracy}%`,
               icon: <Target className="w-6 h-6" />,
               color: 'green',
-              change: '+8%'
             },
             {
               title: 'Total Duration',
               value: `${stats.totalDuration}m`,
               icon: <Clock className="w-6 h-6" />,
               color: 'blue',
-              change: '+12%'
             },
             {
               title: 'Total Reps',
               value: stats.totalReps,
               icon: <TrendingUp className="w-6 h-6" />,
               color: 'coral',
-              change: '+18%'
             },
           ].map((stat, index) => (
             <motion.div
@@ -132,9 +248,6 @@ export default function HistoryPage() {
                     <div className={`p-3 rounded-xl bg-${stat.color}-100 text-${stat.color}-600`}>
                       {stat.icon}
                     </div>
-                    <span className="text-sm font-medium text-green-600">
-                      {stat.change}
-                    </span>
                   </div>
                   <h3 className="text-2xl font-bold text-slate-900 mb-1">
                     {stat.value}
@@ -177,77 +290,91 @@ export default function HistoryPage() {
 
         {/* Sessions List */}
         <div className="space-y-6">
-          {sessions.map((session, index) => (
-            <motion.div
-              key={session.id}
-              initial={{ opacity: 0, y: 20 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: index * 0.1 }}
-            >
-              <Card>
-                <div className="p-6">
-                  <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
-                    <div>
-                      <h3 className="font-semibold text-slate-900">{session.exerciseName}</h3>
-                      <div className="flex items-center space-x-2 mt-1">
-                        <Calendar className="w-4 h-4 text-slate-400" />
-                        <span className="text-sm text-slate-600">
-                          {formatDate(session.date)}
+          {filteredSessions.length === 0 ? (
+            <div className="text-center py-12 text-slate-500">
+              No sessions found for this period.
+            </div>
+          ) : (
+            filteredSessions.map((session, index) => (
+              <motion.div
+                key={session.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+              >
+                <Card>
+                  <div className="p-6">
+                    <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-4">
+                      <div>
+                        <h3 className="font-semibold text-slate-900">{session.exerciseName}</h3>
+                        <div className="flex items-center space-x-2 mt-1">
+                          <Calendar className="w-4 h-4 text-slate-400" />
+                          <span className="text-sm text-slate-600">
+                            {formatDate(session.date)}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex items-center space-x-3">
+                        <ProgressRing value={session.accuracy} size={60} strokeWidth={4} />
+                        <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors duration-200">
+                          <Eye className="w-5 h-5 text-slate-400" />
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                      <div className="text-center">
+                        <div className="text-sm text-slate-600 mb-1">Duration</div>
+                        <div className="flex items-center justify-center space-x-1">
+                          <Clock className="w-4 h-4 text-slate-400" />
+                          <span className="font-medium text-slate-900">{session.duration}m</span>
+                        </div>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-sm text-slate-600 mb-1">Sets & Reps</div>
+                        <span className="font-medium text-slate-900">
+                          {session.sets} × {Math.round(session.reps / (session.sets || 1))}
+                        </span>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-sm text-slate-600 mb-1">Total Reps</div>
+                        <span className="font-medium text-slate-900">{session.reps}</span>
+                      </div>
+
+                      <div className="text-center">
+                        <div className="text-sm text-slate-600 mb-1">Accuracy</div>
+                        <span className={`font-medium ${session.accuracy >= 90 ? "text-green-600" :
+                          session.accuracy >= 75 ? "text-yellow-600" : "text-coral-600"
+                          }`}>
+                          {session.accuracy}%
                         </span>
                       </div>
                     </div>
-                    <div className="flex items-center space-x-3">
-                      <ProgressRing value={session.accuracy} size={60} strokeWidth={4} />
-                      <button className="p-2 hover:bg-slate-100 rounded-lg transition-colors duration-200">
-                        <Eye className="w-5 h-5 text-slate-400" />
-                      </button>
-                    </div>
-                  </div>
 
-                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                    <div className="text-center">
-                      <div className="text-sm text-slate-600 mb-1">Duration</div>
-                      <div className="flex items-center justify-center space-x-1">
-                        <Clock className="w-4 h-4 text-slate-400" />
-                        <span className="font-medium text-slate-900">{session.duration}m</span>
+                    {session.notes && (
+                      <div className="mt-4 p-3 bg-teal-50 border border-teal-100 rounded-lg">
+                        <p className="text-sm text-teal-800">
+                          <span className="font-medium">Doctor's Note:</span> {session.notes}
+                        </p>
                       </div>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="text-sm text-slate-600 mb-1">Sets & Reps</div>
-                      <span className="font-medium text-slate-900">
-                        {session.sets} × {session.reps / session.sets}
-                      </span>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="text-sm text-slate-600 mb-1">Total Reps</div>
-                      <span className="font-medium text-slate-900">{session.reps}</span>
-                    </div>
-                    
-                    <div className="text-center">
-                      <div className="text-sm text-slate-600 mb-1">Accuracy</div>
-                      <span className={`font-medium ${
-                        session.accuracy >= 90 ? "text-green-600" :
-                        session.accuracy >= 75 ? "text-yellow-600" : "text-coral-600"
-                      }`}>
-                        {session.accuracy}%
-                      </span>
-                    </div>
+                    )}
                   </div>
-
-                  {session.notes && (
-                    <div className="mt-4 p-3 bg-teal-50 border border-teal-100 rounded-lg">
-                      <p className="text-sm text-teal-800">
-                        <span className="font-medium">Doctor's Note:</span> {session.notes}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </Card>
-            </motion.div>
-          ))}
+                </Card>
+              </motion.div>
+            ))
+          )}
         </div>
+
+        {/* Debug Info - Temporary */}
+        {filteredSessions.length === 0 && debugInfo && (
+          <div className="mt-8 p-4 bg-gray-100 rounded text-xs font-mono text-gray-600">
+            <h4 className="font-bold">Debug Information:</h4>
+            <pre>{JSON.stringify(debugInfo, null, 2)}</pre>
+            <p className="mt-2">Filter Mode: {dateRange}</p>
+          </div>
+        )}
 
         {/* Progress Chart */}
         <Card className="mt-8">

@@ -85,28 +85,66 @@ export default function AssignExercisesPage() {
 
   const bodyParts = Array.from(new Set(exercises.flatMap(ex => ex.bodyPart)))
 
+
+
+  // Add state for assignment details
+  const [assignmentDetails, setAssignmentDetails] = useState({
+      sets: 3,
+      reps: 12,
+      frequency: 'daily',
+      durationType: '1_week', // '1_week' | '1_month' | 'custom'
+      startDate: new Date().toISOString().split('T')[0],
+      endDate: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0],
+      selectedDays: [] as string[]
+  })
+
+  const [customDates, setCustomDates] = useState(false)
+
+  // Update end date when duration type changes
+  useEffect(() => {
+     if (assignmentDetails.durationType === '1_week') {
+         const end = new Date(new Date(assignmentDetails.startDate).getTime() + 7 * 24 * 60 * 60 * 1000)
+         setAssignmentDetails(prev => ({...prev, endDate: end.toISOString().split('T')[0]}))
+         setCustomDates(false)
+     } else if (assignmentDetails.durationType === '1_month') {
+         const end = new Date(new Date(assignmentDetails.startDate).getTime() + 30 * 24 * 60 * 60 * 1000)
+         setAssignmentDetails(prev => ({...prev, endDate: end.toISOString().split('T')[0]}))
+         setCustomDates(false)
+     } else {
+         setCustomDates(true)
+     }
+  }, [assignmentDetails.durationType, assignmentDetails.startDate])
+
+
+  const weekDays = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+  const handleDayToggle = (day: string) => {
+      setAssignmentDetails(prev => {
+          const days = prev.selectedDays.includes(day)
+              ? prev.selectedDays.filter(d => d !== day)
+              : [...prev.selectedDays, day]
+          return { ...prev, selectedDays: days }
+      })
+  }
+
   const handleAssignExercise = async () => {
     if (selectedExercise && selectedPatients.length > 0) {
         try {
-            // Get values from inputs (using refs or state would be cleaner, but for now document.getElementById or just simple state binding in the render if added)
-            // Ideally we need state for these inputs. Let's assume standard defaults for now or add state.
-            // Since I can't see the inputs state variables, I will add them in a separate chunk or just use defaults here.
-            
-            // Wait, the previous code didn't have state for sets/reps! 
-            // I need to add state for assignment details: sets, reps, frequency.
-            
             const payload = {
                 exercise_id: selectedExercise,
                 patient_ids: selectedPatients,
                 sets: assignmentDetails.sets,
                 reps: assignmentDetails.reps,
                 frequency: assignmentDetails.frequency,
+                start_date: assignmentDetails.startDate,
+                end_date: assignmentDetails.endDate,
+                selected_days: assignmentDetails.frequency === 'specific_days' ? assignmentDetails.selectedDays : [],
                 notes: "" 
             }
             
             await api.post('/doctor/assignments', payload)
             
-            alert("Exercise assigned successfully!") // Simple feedback
+            alert("Exercise assigned successfully!")
             
             setShowAssignModal(false)
             setSelectedExercise(null)
@@ -117,13 +155,6 @@ export default function AssignExercisesPage() {
         }
     }
   }
-
-  // Add state for assignment details
-  const [assignmentDetails, setAssignmentDetails] = useState({
-      sets: 3,
-      reps: 12,
-      frequency: 'daily'
-  })
 
   return (
     <div className="py-8 px-4 sm:px-6 lg:px-8">
@@ -304,20 +335,79 @@ export default function AssignExercisesPage() {
                         </div>
                       </div>
 
+                      {/* Duration Section */}
+                      <div>
+                          <label className="block text-sm font-medium text-slate-700 mb-2">
+                              Timeline
+                          </label>
+                          <select
+                              className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 mb-2"
+                              value={assignmentDetails.durationType}
+                              onChange={(e) => setAssignmentDetails({...assignmentDetails, durationType: e.target.value})}
+                          >
+                              <option value="1_week">1 Week</option>
+                              <option value="1_month">1 Month</option>
+                              <option value="custom">Custom Range</option>
+                          </select>
+                          
+                          <div className="grid grid-cols-2 gap-3">
+                              <div className="flex flex-col">
+                                  <label className="text-xs text-slate-500 mb-1">Start Date</label>
+                                  <input 
+                                      type="date"
+                                      className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                      value={assignmentDetails.startDate}
+                                      onChange={(e) => setAssignmentDetails({...assignmentDetails, startDate: e.target.value})}
+                                      
+                                  />
+                              </div>
+                               <div className="flex flex-col">
+                                  <label className="text-xs text-slate-500 mb-1">End Date</label>
+                                  <input 
+                                      type="date"
+                                      className="border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500"
+                                      value={assignmentDetails.endDate}
+                                      disabled={!customDates}
+                                      onChange={(e) => setAssignmentDetails({...assignmentDetails, endDate: e.target.value})}
+                                  />
+                              </div>
+                          </div>
+                      </div>
+
+                      {/* Frequency Section */}
                       <div>
                         <label className="block text-sm font-medium text-slate-700 mb-2">
                           Frequency
                         </label>
                         <select 
-                            className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500"
+                            className="w-full border border-slate-300 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-teal-500 mb-2"
                             value={assignmentDetails.frequency}
                             onChange={(e) => setAssignmentDetails({...assignmentDetails, frequency: e.target.value})}
                         >
-                          <option value="daily">Daily</option>
+                          <option value="daily">Everyday</option>
+                          <option value="specific_days">Specific Days</option>
                           <option value="every_other_day">Every Other Day</option>
                           <option value="weekly">Weekly</option>
                           <option value="twice_weekly">Twice Weekly</option>
                         </select>
+
+                        {assignmentDetails.frequency === 'specific_days' && (
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                {weekDays.map(day => (
+                                    <button
+                                        key={day}
+                                        onClick={() => handleDayToggle(day)}
+                                        className={`px-3 py-1 text-xs rounded-full border transition-colors ${
+                                            assignmentDetails.selectedDays.includes(day)
+                                            ? 'bg-teal-600 text-white border-teal-600'
+                                            : 'bg-white text-slate-600 border-slate-300 hover:border-teal-400'
+                                        }`}
+                                    >
+                                        {day.slice(0, 3)}
+                                    </button>
+                                ))}
+                            </div>
+                        )}
                       </div>
 
                       <motion.button

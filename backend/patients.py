@@ -47,9 +47,9 @@ def session_history(request: Request):
         
         patient_id = patient_res.data["id"]
         
-        # Get session history for this patient only
+        # Get session history for this patient only, including exercise details
         sessions = supabase.from_("exercise_sessions")\
-            .select("*")\
+            .select("*, exercises(*)")\
             .eq("patient_id", patient_id)\
             .order("created_at", desc=True)\
             .execute()

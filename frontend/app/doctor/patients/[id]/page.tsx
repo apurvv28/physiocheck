@@ -64,6 +64,18 @@ interface AssignedExercise {
   progress: number;
   lastCompleted?: string;
   dueDate?: string;
+  startDate?: string;
+  endDate?: string;
+  selectedDays?: string[];
+}
+
+interface SessionHistory {
+  id: string;
+  created_at: string;
+  status: string;
+  duration: number;
+  exercise_name?: string;
+  accuracy?: number;
 }
 
 export default function PatientProfilePage() {
@@ -74,6 +86,7 @@ export default function PatientProfilePage() {
   const [patient, setPatient] = useState<PatientDetails | null>(null);
   const [stats, setStats] = useState<PatientStats | null>(null);
   const [exercises, setExercises] = useState<AssignedExercise[]>([]);
+  const [history, setHistory] = useState<SessionHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
     "overview" | "exercises" | "history" | "notes"
@@ -84,13 +97,19 @@ export default function PatientProfilePage() {
       setLoading(true);
 
       // Fetch patient details
-      const [patientRes, statsRes, exercisesRes] = await Promise.all([
+      const [patientRes, statsRes, exercisesRes, historyRes] = await Promise.all([
         api.get(`/doctor/patients/${patientId}`),
         api.get(`/doctor/patients/${patientId}/stats`),
         api.get(`/doctor/patients/${patientId}/exercises`),
+        api.get(`/doctor/patients/${patientId}/history`),
       ]);
 
-      setPatient(patientRes.data);
+      const patientData = patientRes.data;
+      setPatient({
+          ...patientData,
+          createdAt: patientData.created_at || patientData.createdAt, // Handle both cases
+          name: patientData.full_name || patientData.name // Ensure name is populated
+      });
       setStats(statsRes.data);
       
       // Map exercises to flattened structure using ex.exercises.*
@@ -101,12 +120,25 @@ export default function PatientProfilePage() {
         sets: ex.sets || 0,
         reps: ex.reps || 0,
         frequency: ex.frequency || "daily",
+        startDate: ex.start_date,
+        endDate: ex.end_date,
+        selectedDays: ex.selected_days || [],
         progress: 0, // Placeholder
         lastCompleted: undefined, // Placeholder
         dueDate: undefined // Placeholder
       }));
       
       setExercises(mappedExercises);
+      
+      const mappedHistory = (historyRes.data || []).map((s: any) => ({
+          id: s.id,
+          created_at: s.created_at,
+          status: s.status,
+          duration: s.duration_seconds || s.duration || 0,
+          exercise_name: s.exercises?.name || 'Unknown',
+          accuracy: s.metrics?.accuracy || 0 
+      }));
+      setHistory(mappedHistory);
     } catch (error) {
       // console.error("Error fetching patient data:", error);
     } finally {
@@ -547,15 +579,19 @@ export default function PatientProfilePage() {
                                   <span>
                                     {exercise.sets} sets × {exercise.reps} reps
                                   </span>
-                                  <span>{exercise.frequency}</span>
-                                  {exercise.dueDate && (
-                                    <span className="text-coral-600">
-                                      Due:{" "}
-                                      {new Date(
-                                        exercise.dueDate
-                                      ).toLocaleDateString()}
-                                    </span>
-                                  )}
+                                  <span>
+                                      {exercise.frequency === 'specific_days' && exercise.selectedDays 
+                                          ? exercise.selectedDays.map(d=>d.slice(0,3)).join(', ') 
+                                          : exercise.frequency
+                                      }
+                                  </span>
+                                  {exercise.endDate && new Date(exercise.endDate) < new Date() ? (
+                                      <span className="text-green-600 font-medium">All sessions completed</span>
+                                  ) : exercise.endDate ? (
+                                      <span className="text-slate-500">
+                                          Ends: {new Date(exercise.endDate).toLocaleDateString()}
+                                      </span>
+                                  ) : null}
                                 </div>
                               </div>
                               <ProgressRing
@@ -658,17 +694,19 @@ export default function PatientProfilePage() {
                                       </span>
                                     </div>
                                   )}
-                                  {exercise.dueDate && (
-                                    <div className="flex items-center space-x-2 text-sm text-slate-600">
-                                      <Calendar className="w-4 h-4 text-coral-600" />
-                                      <span className="text-coral-700">
-                                        Due:{" "}
-                                        {new Date(
-                                          exercise.dueDate
-                                        ).toLocaleDateString()}
-                                      </span>
-                                    </div>
-                                  )}
+                                  {exercise.endDate && new Date(exercise.endDate) < new Date() ? (
+                                       <div className="flex items-center space-x-2 text-sm text-green-600">
+                                          <CheckCircle className="w-4 h-4" />
+                                          <span className="font-medium">All sessions completed</span>
+                                      </div>
+                                  ) : exercise.endDate ? (
+                                      <div className="flex items-center space-x-2 text-sm text-slate-600">
+                                          <Calendar className="w-4 h-4 text-blue-600" />
+                                          <span className="text-blue-700">
+                                              Ends: {new Date(exercise.endDate).toLocaleDateString()}
+                                          </span>
+                                      </div>
+                                  ) : null}
                                 </div>
                                 <div className="flex items-center space-x-3">
                                   <button className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors duration-200">
@@ -689,16 +727,54 @@ export default function PatientProfilePage() {
 
                 {activeTab === "history" && (
                   <div>
+                  </div>
+                )} {activeTab === "history" && (
+                  <div>
                     <h3 className="font-semibold text-slate-900 mb-6">
                       Session History
                     </h3>
-                    {/* Session history component would go here */}
-                    <div className="text-center py-12">
-                      <History className="w-16 h-16 text-slate-300 mx-auto mb-4" />
-                      <p className="text-slate-600">
-                        Session history will appear here
-                      </p>
-                    </div>
+                    {history.length === 0 ? (
+                        <div className="text-center py-12">
+                            <History className="w-16 h-16 text-slate-300 mx-auto mb-4" />
+                            <p className="text-slate-600">
+                                No sessions recorded yet.
+                            </p>
+                        </div>
+                    ) : (
+                        <div className="space-y-4">
+                            {history.map((session) => (
+                                <Card key={session.id}>
+                                    <div className="p-4 flex items-center justify-between">
+                                        <div className="flex items-center space-x-4">
+                                            <div className="w-10 h-10 rounded-full bg-slate-100 flex items-center justify-center">
+                                                <Activity className="w-5 h-5 text-slate-600" />
+                                            </div>
+                                            <div>
+                                                <h4 className="font-medium text-slate-900">{session.exercise_name}</h4>
+                                                <p className="text-sm text-slate-500">
+                                                    {new Date(session.created_at).toLocaleDateString()} • {new Date(session.created_at).toLocaleTimeString()}
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center space-x-6">
+                                            <div className="text-right">
+                                                <p className="text-xs text-slate-500">Duration</p>
+                                                <p className="font-medium text-slate-900">{Math.round((session.duration || 0) / 60)}m</p>
+                                            </div>
+                                            <div className="text-right">
+                                                <p className="text-xs text-slate-500">Status</p>
+                                                <span className={`inline-block px-2 py-1 text-xs rounded-full ${
+                                                    session.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                                                }`}>
+                                                    {session.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
                   </div>
                 )}
 
