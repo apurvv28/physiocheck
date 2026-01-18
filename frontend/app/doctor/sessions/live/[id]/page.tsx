@@ -102,6 +102,7 @@ export default function LiveSessionPage() {
     connectWs();
 
     return () => {
+        console.log('Cleaning up WebSocket and Call...');
         if (wsRef.current?.readyState === WebSocket.OPEN) {
             wsRef.current.close();
         }
@@ -111,9 +112,11 @@ export default function LiveSessionPage() {
 
   // const hasProcessedAnswer = useRef(false);
 
+  const signalingState = useRef<'initial' | 'have-offer' | 'stable'>('initial');
+
   const startCall = async () => {
       try {
-          // hasProcessedAnswer.current = false; // Reset state for new call
+          signalingState.current = 'initial'; // Reset
           const localStream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
           setStream(localStream);
           
@@ -124,6 +127,8 @@ export default function LiveSessionPage() {
               config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] }
           });
           
+          signalingState.current = 'have-offer'; // We created offer (internally by simple-peer)
+
           peer.on('signal', (data) => {
               wsRef.current?.send(JSON.stringify({
                   type: 'signal',
@@ -134,17 +139,28 @@ export default function LiveSessionPage() {
 
           peer.on('connect', () => {
               console.log("DEBUG: Doctor Peer Connected!");
+              signalingState.current = 'stable';
           });
 
           peer.on('error', (err) => {
+              // Ignore the invalid state error if it somehow still happens, to avoid UI crash
+              if (err.message && err.message.includes('Called in wrong state: stable')) {
+                   console.warn("DEBUG: Peer emitted error (ignoring):", err.message);
+                   return;
+              }
               console.error("DEBUG: Doctor Peer Error:", err);
+              // Don't necessarily destroy? Simple-peer usually destroys itself on error.
           });
 
           peer.on('stream', (remoteStream) => {
-              console.log("DEBUG: Received remote stream");
+              console.log("DEBUG: Received remote stream:", remoteStream.id, remoteStream.getTracks());
               setRemoteStream(remoteStream);
               if (remoteVideo.current) {
                   remoteVideo.current.srcObject = remoteStream;
+                  remoteVideo.current.onloadedmetadata = () => {
+                      console.log("DEBUG: Remote video metadata loaded, playing...");
+                      remoteVideo.current?.play().catch(e => console.error("Play error:", e));
+                  };
               }
           });
           
@@ -161,16 +177,29 @@ export default function LiveSessionPage() {
       // console.log("DEBUG: Received signal", message.data.type);
       if (peerRef.current && !peerRef.current.destroyed) {
           try {
-             // De-duplication: If we are already connected/stable and receive an 'answer', ignore it.
-             // @ts-ignore - access internal pc to check state if needed, or rely on connected flag
-             if (message.data.type === 'answer' && peerRef.current.connected) {
-                 console.log("DEBUG: Ignoring duplicate answer (peer already connected)");
-                 return;
+             const signal = message.data;
+             
+             // Strict de-duplication for Answer
+             if (signal.type === 'answer') {
+                 if (signalingState.current === 'stable') {
+                     console.log("DEBUG: strictly ignoring duplicate answer (state is stable)");
+                     return;
+                 }
+                 // Mark as stable *before* signaling to prevent race if it's sync? 
+                 // Actually simple-peer processes it now.
+                 // We'll set it to stable after we process it, OR assume processing makes it stable.
+                 // Safest: check our own flag.
+                 signalingState.current = 'stable'; 
              }
              
-              peerRef.current.signal(message.data);
-          } catch (err) {
-              console.warn("DEBUG: Failed to signal peer (likely duplicate or wrong state):", err);
+             peerRef.current.signal(signal);
+             
+          } catch (err: any) {
+              if (err.message && err.message.includes('Called in wrong state: stable')) {
+                  console.warn("DEBUG: Ignored signal (caught exception):", err.message);
+              } else {
+                  console.warn("DEBUG: Failed to signal peer:", err);
+              }
           }
       }
   };
