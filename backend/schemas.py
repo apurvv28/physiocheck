@@ -94,3 +94,24 @@ class ChangePasswordRequest(BaseModel):
     old_password: str
     new_password: str
 
+class MessageCreate(BaseModel):
+    recipient_id: UUID
+    content: str
+    attachment_url: Optional[str] = None
+    attachment_type: Optional[str] = None
+
+class Message(BaseModel):
+    id: UUID
+    sender_id: UUID
+    recipient_id: UUID
+    content: Optional[str] = None
+    attachment_url: Optional[str] = None
+    attachment_type: Optional[str] = None
+    created_at: datetime
+    is_read: bool
+    sender_role: str
+    recipient_role: str
+    
+    class Config:
+        from_attributes = True
+

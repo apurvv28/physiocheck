@@ -17,7 +17,7 @@ export function Navigation() {
 
   const doctorLinks = [
     { href: '/doctor/dashboard', label: 'Dashboard' },
-    { href: '/doctor/add-patient', label: 'Add Patient' },
+    { href: '/doctor/chat', label: 'Chat' },
     { href: '/doctor/patients', label: 'Patients' },
     { href: '/doctor/assign-exercises', label: 'Assign Exercises' },
     { href: '/doctor/sessions', label: 'Sessions' },
@@ -25,6 +25,7 @@ export function Navigation() {
 
   const patientLinks = [
     { href: '/patient/dashboard', label: 'Dashboard' },
+    { href: '/patient/chat', label: 'Chat' },
     { href: '/patient/exercises', label: 'My Exercises' },
     { href: '/patient/live-session', label: 'Live Session' },
     { href: '/patient/history', label: 'History' },

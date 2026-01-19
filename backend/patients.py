@@ -93,3 +93,53 @@ def dashboard(request: Request):
     except Exception as e:
         print(f"Error fetching dashboard stats: {e}")
         return {"completed_sessions": 0, "total_exercises": 0}
+
+@router.get("/my-doctor")
+def get_my_doctor(request: Request):
+    try:
+        user = request.state.user
+        
+        # Get patient record
+        patient_res = supabase.from_("patients").select("doctor_id").eq("auth_user_id", user.id).single().execute()
+        
+        if not patient_res.data or not patient_res.data.get("doctor_id"):
+            return None
+            
+        doctor_id = patient_res.data["doctor_id"]
+        
+        # Get Doctor info
+        doctor_res = supabase.from_("doctors").select("id, auth_user_id").eq("id", doctor_id).single().execute()
+        
+        if not doctor_res.data:
+            return None
+            
+        doctor_data = doctor_res.data
+        doctor_auth_id = doctor_data["auth_user_id"]
+        
+        # Get Doctor Name from Auth (using Admin/Service Role if possible, or just user_metadata if visible)
+        # Since we use service role key in backend, we might be able to fetch. 
+        # But supabase-py client.auth.admin.get_user_by_id might be needed.
+        # However, supabase-py client initialized with service key acts as admin?
+        # Let's try to fetch user metadata.
+        
+        doctor_name = "Dr. Physiotherapist"
+        try:
+             # This requires the client to be initialized with service_role_key which it is in database.py
+             doc_user = supabase.auth.admin.get_user_by_id(doctor_auth_id)
+             if doc_user and doc_user.user and doc_user.user.user_metadata:
+                 meta = doc_user.user.user_metadata
+                 if meta.get("full_name"):
+                     doctor_name = meta.get("full_name")
+        except Exception as e:
+            print(f"Failed to fetch doctor auth details: {e}")
+            
+        return {
+            "id": doctor_data["id"],
+            "auth_user_id": doctor_auth_id,
+            "name": doctor_name,
+            "role": "doctor"
+        }
+
+    except Exception as e:
+        print(f"Error fetching my doctor: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch doctor details")

@@ -8,12 +8,12 @@ from datetime import datetime
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
 
 class NotificationBase(BaseModel):
-    id: UUID
-    title: str
-    message: str
-    type: str # info, success, warning, error
-    is_read: bool
-    created_at: datetime
+    id: Optional[UUID] = None
+    title: Optional[str] = "Notification"
+    message: Optional[str] = ""
+    type: Optional[str] = "info" # info, success, warning, error
+    is_read: Optional[bool] = False
+    created_at: Optional[datetime] = None
 
 def create_notification(user_id: str, title: str, message: str, type: str = "info", data: dict = {}):
     """

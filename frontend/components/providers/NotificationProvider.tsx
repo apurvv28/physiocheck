@@ -20,6 +20,7 @@ interface NotificationContextType {
   markAsRead: (id: string) => Promise<void>
   markAllAsRead: () => Promise<void>
   refreshNotifications: () => Promise<void>
+  addEphemeralNotification?: (notification: Omit<Notification, 'id' | 'created_at' | 'is_read'>) => void
 }
 
 const NotificationContext = createContext<NotificationContextType | undefined>(undefined)
@@ -72,8 +73,26 @@ export function NotificationProvider({ children }: { children: React.ReactNode }
     }
   }
 
+  const addEphemeralNotification = (notification: Omit<Notification, 'id' | 'created_at' | 'is_read'>) => {
+    const newNotification: Notification = {
+      ...notification,
+      id: `temp-${Date.now()}`,
+      created_at: new Date().toISOString(),
+      is_read: false
+    }
+    setNotifications(prev => [newNotification, ...prev])
+    setUnreadCount(prev => prev + 1)
+  }
+
   return (
-    <NotificationContext.Provider value={{ notifications, unreadCount, markAsRead, markAllAsRead, refreshNotifications }}>
+    <NotificationContext.Provider value={{ 
+      notifications, 
+      unreadCount, 
+      markAsRead, 
+      markAllAsRead, 
+      refreshNotifications,
+      addEphemeralNotification 
+    }}>
       {children}
     </NotificationContext.Provider>
   )

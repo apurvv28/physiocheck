@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import { apiEndpoints } from '@/lib/api';
 import { Card } from '@/components/cards/Card';
@@ -233,9 +233,21 @@ export default function LiveSessionPage() {
   }, [remoteStream]);
 
 
+  // Helper to set video srcObject safely
+  const setVideoRef = useCallback((videoElement: HTMLVideoElement | null, streamToSet: MediaStream | null) => {
+      if (videoElement && streamToSet) {
+           if (videoElement.srcObject !== streamToSet) {
+              videoElement.srcObject = streamToSet;
+              // Ensure it plays even if pure audio or blocked by heavy load
+              videoElement.play().catch(e => console.error("Error playing video:", e));
+           }
+      }
+  }, []);
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center gap-4">
+        {/* ... header content ... */}
         <Link href="/doctor/patients" className="p-2 hover:bg-slate-100 rounded-full transition-colors">
           <ChevronLeft className="h-6 w-6" />
         </Link>
@@ -297,17 +309,17 @@ export default function LiveSessionPage() {
             <Card className="aspect-video bg-black flex items-center justify-center overflow-hidden relative rounded-xl">
                 {isInCall && remoteStream ? (
                     <>
-                        {/* Remote Stream (Patient) - Large */}
+                        {/* Remote Stream (Patient) - Large - REQUIREMENT: Bigger one must be of patient */}
                         <video 
-                            ref={remoteVideo}
+                            ref={(el) => setVideoRef(el, remoteStream)}
                             autoPlay
                             playsInline
                             className="w-full h-full object-contain"
                         />
-                        {/* Local Stream (Doctor) - Small PiP */}
+                        {/* Local Stream (Doctor) - Small PiP - REQUIREMENT: Small window must be of doctor */}
                         <div className="absolute bottom-4 right-4 w-48 h-36 bg-slate-900 rounded-lg border border-slate-700 overflow-hidden shadow-xl z-10">
                              <video 
-                                ref={myVideo}
+                                ref={(el) => setVideoRef(el, stream)}
                                 autoPlay
                                 playsInline
                                 muted

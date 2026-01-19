@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { useSearchParams, useRouter } from 'next/navigation'
 import { motion } from 'framer-motion'
 import { 
@@ -300,6 +300,17 @@ export default function LiveSessionPage() {
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`
   }
 
+  // Helper to set video srcObject safely - memoized to prevent video blinking on re-renders
+  const setVideoRef = useCallback((videoElement: HTMLVideoElement | null, streamToSet: MediaStream | null) => {
+      if (videoElement && streamToSet) {
+          if (videoElement.srcObject !== streamToSet) {
+              videoElement.srcObject = streamToSet;
+              // Ensure it plays even if pure audio or blocked by heavy load
+              videoElement.play().catch(e => console.error("Error playing video:", e));
+          }
+      }
+  }, []);
+
   return (
     <div className="min-h-screen bg-linear-to-b from-slate-900 to-slate-800">
       {/* Countdown Overlay */}
@@ -370,20 +381,20 @@ export default function LiveSessionPage() {
               </div>
 
               <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
-                {/* Local Video Feed */}
+                {/* Local Video Feed - Patient (Self) - BIG */}
                 <video 
-                    ref={myVideo} 
+                    ref={(el) => setVideoRef(el, streamRef.current)}
                     muted 
                     autoPlay 
                     playsInline 
                     className="absolute inset-0 w-full h-full object-cover transform scale-x-[-1]" 
                 />
 
-                {/* Remote Doctor Video (Small Window) */}
+                {/* Remote Doctor Video (Small Window) - REQUIREMENT: Small window must be of doctor */}
                 {doctorStream && (
                     <div className="absolute top-4 right-4 w-48 h-36 bg-black rounded-lg border-2 border-slate-700 overflow-hidden shadow-xl z-10">
                         <video 
-                            ref={doctorVideo} 
+                            ref={(el) => setVideoRef(el, doctorStream)}
                             autoPlay 
                             playsInline 
                             className="w-full h-full object-cover"
