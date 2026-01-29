@@ -13,6 +13,7 @@ import { AnimatedLoader } from '@/components/loaders/AnimatedLoader'
 import { api, apiEndpoints } from '@/lib/api'
 import { supabase } from '@/lib/supabase'
 import Link from 'next/link'
+import { AppointmentList } from '@/components/appointments/AppointmentList'
 
 interface PatientStats {
   totalExercises: number
@@ -35,6 +36,7 @@ export default function PatientDashboard() {
   const [stats, setStats] = useState<PatientStats | null>(null)
   const [upcomingExercises, setUpcomingExercises] = useState<UpcomingExercise[]>([])
   const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<'overview' | 'appointments'>('overview')
 
   useEffect(() => {
     fetchDashboardData()
@@ -198,6 +200,34 @@ export default function PatientDashboard() {
           </p>
         </motion.div>
 
+        {/* Tabs */}
+        <div className="mb-8 border-b border-slate-200">
+          <div className="flex space-x-8">
+            <button
+              onClick={() => setActiveTab('overview')}
+              className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'overview'
+                  ? 'border-teal-500 text-teal-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              Overview
+            </button>
+            <button
+              onClick={() => setActiveTab('appointments')}
+              className={`pb-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                activeTab === 'appointments'
+                  ? 'border-teal-500 text-teal-600'
+                  : 'border-transparent text-slate-500 hover:text-slate-700 hover:border-slate-300'
+              }`}
+            >
+              Appointments
+            </button>
+          </div>
+        </div>
+
+        {activeTab === 'overview' ? (
+        <>
         {/* Stats Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
           {statCards.map((stat, index) => (
@@ -383,6 +413,12 @@ export default function PatientDashboard() {
             </motion.div>
           </div>
         </div>
+        </>
+        ) : (
+          <div className="max-w-4xl">
+             <AppointmentList userRole="patient" />
+          </div>
+        )}
       </div>
     </div>
   )

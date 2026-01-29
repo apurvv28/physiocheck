@@ -1,0 +1,2 @@
+PATIENTS columns: ['age', 'allergies', 'auth_user_id', 'conditions', 'created_at', 'date_of_birth', 'doctor_id', 'email', 'emergency_contact_name', 'emergency_contact_phone', 'full_name', 'id', 'medications', 'notes', 'phone']
+DOCTORS columns: ['auth_user_id', 'created_at', 'google_refresh_token', 'id']

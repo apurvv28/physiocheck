@@ -49,6 +49,9 @@ app.include_router(profile_router, prefix="/api/v1")
 app.include_router(notifications_router, prefix="/api/v1")
 app.include_router(chat_router, prefix="/api/v1")
 
+from appointments import router as appointments_router
+app.include_router(appointments_router, prefix="/api/v1")
+
 @app.get("/")
 def root():
     return {"status": "PhysioCheck backend running"}

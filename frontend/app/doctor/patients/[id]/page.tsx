@@ -28,6 +28,8 @@ import { ProgressRing } from "@/components/charts/ProgressRing";
 import { AnimatedLoader } from "@/components/loaders/AnimatedLoader";
 import { DoctorNotes } from "@/components/feedback/DoctoreNotes";
 import { api } from "@/lib/api";
+import { AssignAppointmentModal } from "@/components/appointments/AssignAppointmentModal";
+import { AppointmentList } from "@/components/appointments/AppointmentList";
 
 interface PatientDetails {
   id: string;
@@ -89,8 +91,10 @@ export default function PatientProfilePage() {
   const [history, setHistory] = useState<SessionHistory[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<
-    "overview" | "exercises" | "history" | "notes"
+    "overview" | "exercises" | "history" | "notes" | "appointments"
   >("overview");
+  const [isAppointmentModalOpen, setIsAppointmentModalOpen] = useState(false);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
 
   const fetchPatientData = useCallback(async () => {
     try {
@@ -429,6 +433,11 @@ export default function PatientProfilePage() {
                       label: "Notes",
                       icon: <FileText className="w-4 h-4" />,
                     },
+                    {
+                      id: "appointments",
+                      label: "Appointments",
+                      icon: <Calendar className="w-4 h-4" />,
+                    },
                   ].map((tab) => (
                     <button
                       key={tab.id}
@@ -439,6 +448,7 @@ export default function PatientProfilePage() {
                             | "exercises"
                             | "history"
                             | "notes"
+                            | "appointments"
                         )
                       }
                       className={`flex items-center space-x-2 px-4 py-3 border-b-2 transition-colors duration-200 whitespace-nowrap ${
@@ -786,10 +796,56 @@ export default function PatientProfilePage() {
                     isDoctor={true}
                   />
                 )}
+
+                {activeTab === "appointments" && (
+                  <div>
+                    <div className="flex items-center justify-between mb-6">
+                      <h3 className="font-semibold text-slate-900">
+                        Appointments
+                      </h3>
+                      <div>
+                          <button
+                            onClick={() => {
+                                const clientId = "332033070180-lnd913g1m70qscdn122las3i5iukefll.apps.googleusercontent.com";
+                                const redirectUri = "http://localhost:3000/oauth2/callback";
+                                const scope = "https://www.googleapis.com/auth/calendar.events";
+                                window.location.href = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}&access_type=offline&prompt=consent`;
+                            }}
+                            className="inline-flex items-center px-4 py-2 bg-white border border-slate-300 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors duration-200 mr-3"
+                          >
+                            <Calendar className="w-4 h-4 mr-2 text-blue-500" />
+                            Connect Google Calendar
+                          </button>
+                          <button
+                            onClick={() => setIsAppointmentModalOpen(true)}
+                            className="inline-flex items-center px-4 py-2 bg-teal-600 text-white rounded-lg hover:bg-teal-700 transition-colors duration-200"
+                          >
+                            <Calendar className="w-4 h-4 mr-2" />
+                            Schedule Appointment
+                          </button>
+                      </div>
+                    </div>
+                    <AppointmentList 
+                        patientId={patientId} 
+                        userRole="doctor" 
+                        key={refreshTrigger}
+                    />
+                  </div>
+                )}
               </div>
             </Card>
           </div>
         </div>
+
+        <AssignAppointmentModal
+            isOpen={isAppointmentModalOpen}
+            onClose={() => setIsAppointmentModalOpen(false)}
+            patientId={patientId}
+            onSuccess={() => {
+                setRefreshTrigger(prev => prev + 1);
+                // metrics refresh or toast here if needed
+            }}
+        />
 
         {/* Quick Actions */}
         <Card>
